@@ -25,7 +25,7 @@ import {
   MapPinned,
 
   ArrowRight,
-  FunctionSquare,
+  BookOpen,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 
@@ -41,11 +41,11 @@ interface ToolCard {
 const sections: { title: string; description: string; tools: ToolCard[] }[] = [
   {
     title: 'Math',
-    description: 'Probability distributions and matrix operations',
+    description: 'Probability, matrices, statistics and formula explanations',
     tools: [
       { path: '/probability/binomial', label: 'Probability', description: 'Binomial, Poisson, Hypergeometric & custom distributions', icon: Dice5, color: 'slate' },
       { path: '/matrices/multiplication', label: 'Matrices', description: 'Multiply, reduce, invert, and solve matrix systems', icon: Table2, color: 'zinc' },
-      { path: '/integrals/indefinite', label: 'Integrals', description: 'Step-by-step integration with multiple techniques', icon: FunctionSquare, color: 'violet' },
+      { path: '/formula-lab', label: 'Formula Lab', description: 'What each formula means, where it comes from, and how to read the result', icon: BookOpen, color: 'violet' },
     ],
   },
   {

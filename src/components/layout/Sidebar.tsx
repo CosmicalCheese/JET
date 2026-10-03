@@ -42,6 +42,7 @@ import {
   TrendingUp,
   Crop,
   BarChart2,
+  BookOpen,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { HistoryPanel } from '../ui/HistoryPanel'
@@ -69,6 +70,11 @@ const defaultSections: Section[] = [
   {
     title: 'Math',
     tools: [
+      {
+        path: '/formula-lab',
+        label: 'Formula Lab',
+        icon: BookOpen,
+      },
       {
         path: '/probability',
         label: 'Probability',

@@ -31,6 +31,7 @@ const EarthboundBGPage = lazy(() => import('./tools/earthbound-bg/EarthboundBGPa
 import { LinearRegressionPage } from './tools/regression/LinearRegressionPage'
 import { SamplingPage } from './tools/sampling/SamplingPage'
 import { ImageCropPage } from './tools/image-crop/ImageCropPage'
+import { FormulaLabPage } from './tools/formula-lab/FormulaLabPage'
 
 function ErrorPage() {
   const error = useRouteError()
@@ -90,6 +91,8 @@ export const router = createBrowserRouter([
       { path: 'regression', element: <LinearRegressionPage /> },
       { path: 'image-crop', element: <ImageCropPage /> },
       { path: 'sampling', element: <SamplingPage /> },
+      { path: 'formula-lab', element: <FormulaLabPage /> },
+      { path: 'formula-lab/:formulaId', element: <FormulaLabPage /> },
       { path: 'pipeline', element: <PipelinePage /> },
       { path: 'video-to-gif', element: <VideoToGifPage /> },
       { path: 'audio-waveform', element: <AudioWaveformPage /> },

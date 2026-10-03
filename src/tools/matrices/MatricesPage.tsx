@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { Button } from '../../components/ui/Button'
+import { FormulaLink } from '../formula-lab/FormulaLink'
 import { ChevronDown, ChevronRight, Calculator, Copy, ClipboardPaste } from 'lucide-react'
 import {
   multiply,
@@ -151,6 +152,9 @@ export function MatricesPage() {
       <div>
         <h2 className="text-2xl font-bold text-zinc-900">{OP_LABELS[opType]}</h2>
         <p className="text-sm text-zinc-500 mt-2">{OP_DESCRIPTIONS[opType]}</p>
+        {opType === 'multiplication' && (
+          <div className="mt-3"><FormulaLink id="producto-punto" label="¿Por qué fila × columna? Ver producto punto" /></div>
+        )}
       </div>
 
       {/* Sub-options */}

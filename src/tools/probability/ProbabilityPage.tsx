@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { Button } from '../../components/ui/Button'
+import { FormulaLink } from '../formula-lab/FormulaLink'
 import { ChevronDown, ChevronRight, Plus, Trash2, Calculator } from 'lucide-react'
 import {
   binomialBase,
@@ -64,6 +65,15 @@ const OPERATORS: { value: Operator; label: string }[] = [
 
 
 const INCISO_LETTERS = 'abcdefghijklmnopqrstuvwxyz'
+
+/** Explicación correspondiente en Formula Lab */
+const FORMULA_IDS: Partial<Record<DistType, string>> = {
+  binomial: 'binomial',
+  poisson: 'poisson',
+  normal: 'puntuacion-z',
+  gauss: 'puntuacion-z',
+  tstudent: 't-student',
+}
 
 const DIST_TITLES: Record<DistType, string> = {
   binomial: 'Distribución Binomial',
@@ -317,6 +327,7 @@ export function ProbabilityPage() {
       <div>
         <h2 className="text-2xl font-bold text-zinc-900">{DIST_TITLES[distType]}</h2>
         <p className="text-sm text-zinc-500 mt-2">{DIST_DESCRIPTIONS[distType]}</p>
+        {FORMULA_IDS[distType] && <div className="mt-3"><FormulaLink id={FORMULA_IDS[distType]} /></div>}
       </div>
 
       {/* Parameters card */}

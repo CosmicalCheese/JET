@@ -3,6 +3,7 @@ import { Plus, Trash2, Calculator, BarChart2, Copy, ClipboardPaste } from 'lucid
 import { Button } from '../../components/ui/Button'
 import { MathDisplay } from '../../components/ui/MathInput'
 import { useLocalStorage } from '../../hooks/useLocalStorage'
+import { FormulaLink } from '../formula-lab/FormulaLink'
 
 // ─── Math helpers ─────────────────────────────────────────────────────────────
 
@@ -222,6 +223,7 @@ export function SamplingPage() {
           <p className="text-sm text-zinc-500 mt-1">
             Ingresa la población y el tamaño de muestra <span className="font-mono italic">n</span> para generar todas las muestras posibles
           </p>
+          <div className="mt-3"><FormulaLink id="distribucion-muestral" /></div>
         </div>
         {lastSaved && (
           <div className="flex items-center gap-1.5 text-xs text-zinc-400 bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-1.5 shrink-0">

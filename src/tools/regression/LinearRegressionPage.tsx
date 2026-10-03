@@ -3,6 +3,7 @@ import { Plus, Trash2, Calculator, TrendingUp, Copy, ClipboardPaste } from 'luci
 import { Button } from '../../components/ui/Button'
 import { MathDisplay } from '../../components/ui/MathInput'
 import { useLocalStorage } from '../../hooks/useLocalStorage'
+import { FormulaLink } from '../formula-lab/FormulaLink'
 
 // ─── Math helpers ─────────────────────────────────────────────────────────────
 
@@ -226,6 +227,7 @@ export function LinearRegressionPage() {
             Ingresa los datos para calcular la recta de regresión&nbsp;
             <span className="font-mono italic">ŷ = a + b(x)</span>
           </p>
+          <div className="mt-3"><FormulaLink id="regresion-lineal" /></div>
         </div>
         {savedAt && (
           <div className="flex items-center gap-1.5 text-xs text-zinc-400 bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-1.5 shrink-0">
