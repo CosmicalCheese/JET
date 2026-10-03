@@ -3,6 +3,7 @@ import type { VisualSpec } from './types'
 import { fmt, normalCDF, round, toRad } from './format'
 import { Tex } from './Tex'
 import { Vectors3DVisual } from './visuals3d'
+import { LevelsVisual, PhVisual, SpectrumVisual } from './visuals-chem'
 
 const W = 360
 const H = 240
@@ -29,6 +30,9 @@ export function Visual({ spec }: { spec: VisualSpec }) {
     case 'bars': return <BarsVisual {...spec} />
     case 'snell': return <SnellVisual {...spec} />
     case 'motion': return <MotionVisual {...spec} />
+    case 'spectrum': return <SpectrumVisual {...spec} />
+    case 'levels': return <LevelsVisual {...spec} />
+    case 'ph': return <PhVisual {...spec} />
   }
 }
 

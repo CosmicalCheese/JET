@@ -7,7 +7,7 @@
  * Todo texto admite LaTeX inline entre $…$ y **negritas**.
  */
 
-export type AreaId = 'matematicas' | 'estadistica' | 'fisica'
+export type AreaId = 'matematicas' | 'estadistica' | 'fisica' | 'quimica'
 
 export type CategoryId =
   | 'vectores'
@@ -20,6 +20,10 @@ export type CategoryId =
   | 'termodinamica'
   | 'ondas'
   | 'fluidos'
+  | 'disoluciones'
+  | 'atomica'
+  | 'electroquimica'
+  | 'termoquimica'
 
 export interface Category {
   id: CategoryId
@@ -84,7 +88,10 @@ export interface Interpretation {
 export type VisualSpec =
   | { type: 'vectors'; a: number[]; b: number[] }
   /** Escena 3D que se gira arrastrando; view 'top' arranca viendo el plano xy (útil para datos 2D) */
-  | { type: 'vectors3d'; mode: 'dot' | 'cross' | 'points'; a: number[]; b: number[]; view?: 'top' }
+  | { type: 'vectors3d'; mode: 'dot' | 'cross' | 'points' | 'area'; a: number[]; b: number[]; view?: 'top'; origin?: number[] }
+  | { type: 'spectrum'; nm: number }
+  | { type: 'levels'; ni: number; nf: number; nm: number }
+  | { type: 'ph'; ph: number }
   | { type: 'regression'; points: [number, number][]; b0: number; b1: number }
   | { type: 'normal'; z: number; shade: 'left' | 'center'; label?: string }
   | { type: 'bars'; xs: number[]; ps: number[]; highlight: number }

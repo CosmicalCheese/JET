@@ -42,13 +42,15 @@ const C = {
 }
 
 export interface Vectors3DProps {
-  mode: 'dot' | 'cross' | 'points'
+  mode: 'dot' | 'cross' | 'points' | 'area'
   a: number[]
   b: number[]
   view?: 'top'
+  /** Punto desde el que salen a y b (modo área con tres puntos) */
+  origin?: number[]
 }
 
-export function Vectors3DVisual({ mode, a, b, view }: Vectors3DProps) {
+export function Vectors3DVisual({ mode, a, b, view, origin }: Vectors3DProps) {
   const [cam, setCam] = useState(() => VIEWS[view ?? 'iso'])
   const drag = useRef<{ x: number; y: number } | null>(null)
 
@@ -78,13 +80,16 @@ export function Vectors3DVisual({ mode, a, b, view }: Vectors3DProps) {
   // Con vectores la escena gira alrededor del origen. Con dos puntos lejanos al origen
   // centramos la vista en la caja que forman, con ejes y plano de referencia en P₁.
   const O: V3 = [0, 0, 0]
-  const base = mode === 'points' ? A : O
-  const center = mode === 'points' ? mul(add(A, B), 0.5) : O
-  const scenePts: V3[] = mode === 'points' ? [A, B, Q1, Q2] : [O, A, B]
+  // En modo área la figura sale de `origin` (o del origen) y la vista se centra en ella.
+  const Og = to3(origin ?? [0, 0, 0])
+  const OA = add(Og, A), OB = add(Og, B), OAB = add(OA, B)
+  const base = mode === 'points' ? A : mode === 'area' ? Og : O
+  const center = mode === 'points' ? mul(add(A, B), 0.5) : mode === 'area' ? mul(add(Og, OAB), 0.5) : O
+  const scenePts: V3[] = mode === 'points' ? [A, B, Q1, Q2] : mode === 'area' ? [Og, OA, OB, OAB] : [O, A, B]
   if (mode === 'cross') scenePts.push(add(A, B), ...(cShown ? [cShown] : []))
   if (mode === 'dot') scenePts.push(proj)
   const R = Math.max(...scenePts.map(p => norm(sub(p, center))), 1e-9)
-  const L = mode === 'points' ? R * 0.9 : R * 1.15 // largo de los ejes
+  const L = mode === 'points' ? R * 0.9 : mode === 'area' ? R * 1.1 : R * 1.15 // largo de los ejes
   const s = (Math.min(W, H) / 2 - 22) / (R * 1.2)
 
   const P = (p: V3): [number, number] => {
@@ -153,12 +158,15 @@ export function Vectors3DVisual({ mode, a, b, view }: Vectors3DProps) {
     }
   }
 
-  const planeCorners: V3[] = ([[-L, -L], [L, -L], [L, L], [-L, L]] as const).map(([x, y]) => add(base, [x, y, 0]))
+  // la cuadrícula se centra bajo la figura en modo área; en los demás, en el punto base
+  const planeC: V3 = mode === 'area' ? [center[0], center[1], base[2]] : base
+  const planeCorners: V3[] = ([[-L, -L], [L, -L], [L, L], [-L, L]] as const).map(([x, y]) => add(planeC, [x, y, 0]))
   const gridSteps = [-0.5, 0, 0.5].map(k => k * L)
 
   const caption =
     mode === 'dot' ? <>La sombra violeta es la proyección de <Tex latex="\vec b" /> sobre <Tex latex="\vec a" />; el producto punto es esa sombra × <Tex latex="|\vec a|" />. El arco marca el ángulo entre ellos.</>
       : mode === 'cross' ? <>El área amarilla es el paralelogramo de <Tex latex="\vec a" /> y <Tex latex="\vec b" />; su área es <Tex latex="|\vec a\times\vec b|" />. El vector violeta <Tex latex="\vec a\times\vec b" /> sale perpendicular a ese plano{cRescaled ? ' (su largo real es el área; aquí se dibuja a otra escala para que se vea todo)' : ''}. Gíralo para comprobarlo.</>
+        : mode === 'area' ? <>El paralelogramo (azul) tiene área <Tex latex="|\vec a\times\vec b|" />: base por altura. La diagonal lo parte en dos triángulos iguales; el amarillo mide la mitad.</>
         : <>La distancia <Tex latex="d" /> (violeta) es la diagonal de una caja cuyos lados son las diferencias <Tex latex="l" />, <Tex latex="m" /> y <Tex latex="n" />: Pitágoras dos veces.</>
 
   return (
@@ -178,8 +186,8 @@ export function Vectors3DVisual({ mode, a, b, view }: Vectors3DProps) {
         <polygon points={planeCorners.map(p => P(p).join(',')).join(' ')} fill={C.plane} fillOpacity={0.7} stroke="#e4e4e7" />
         {gridSteps.map(k => (
           <g key={k} stroke="#e4e4e7">
-            {line(add(base, [k, -L, 0]), add(base, [k, L, 0]), {})}
-            {line(add(base, [-L, k, 0]), add(base, [L, k, 0]), {})}
+            {line(add(planeC, [k, -L, 0]), add(planeC, [k, L, 0]), {})}
+            {line(add(planeC, [-L, k, 0]), add(planeC, [L, k, 0]), {})}
           </g>
         ))}
         {/* ejes */}
@@ -211,7 +219,27 @@ export function Vectors3DVisual({ mode, a, b, view }: Vectors3DProps) {
           </>
         )}
 
-        {mode === 'points' ? (
+        {mode === 'area' && (
+          <>
+            <polygon points={[Og, OA, OAB, OB].map(p => P(p).join(',')).join(' ')} fill={C.a} fillOpacity={0.1} stroke={C.a} strokeOpacity={0.5} strokeDasharray="4 3" />
+            <polygon points={[Og, OA, OB].map(p => P(p).join(',')).join(' ')} fill={C.amber} fillOpacity={0.35} stroke={C.amber} strokeWidth={1.5} />
+            {drop(OA)}{drop(OB)}
+            {/* con tres puntos ya se etiquetan los vértices */}
+            {arrow(Og, OA, C.a, origin ? '' : 'a')}
+            {arrow(Og, OB, C.b, origin ? '' : 'b')}
+            {origin && [['P', Og], ['Q', OA], ['R', OB]].map(([lab, p]) => {
+              const [px, py] = P(p as V3)
+              return (
+                <g key={lab as string}>
+                  <circle cx={px} cy={py} r={3.5} fill={C.ink} />
+                  <text x={px - 10} y={py + 14} fontSize={12} fontWeight={600} fill={C.ink}>{lab as string}</text>
+                </g>
+              )
+            })}
+          </>
+        )}
+
+        {mode === 'area' ? null : mode === 'points' ? (
           <>
             {drop(A)}{drop(B)}
             {line(A, Q1, { stroke: C.a, strokeWidth: 2 })}

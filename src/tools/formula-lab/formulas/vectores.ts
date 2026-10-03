@@ -253,7 +253,7 @@ const productoCruz: Formula = {
     'Asumir que $\\vec a\\times\\vec b = \\vec b\\times\\vec a$: el orden cambia el sentido.',
     'Intentar usarlo en 2D. Para vectores en el plano, agrega $z = 0$ y el resultado apunta sobre el eje $z$.',
   ],
-  related: ['producto-punto'],
+  related: ['producto-punto', 'area-vectores'],
   keywords: ['producto vectorial', 'cross product', 'normal', 'area paralelogramo', 'torque', 'momento'],
 }
 
@@ -340,6 +340,134 @@ const distancia: Formula = {
   ],
   related: ['producto-punto', 'ley-de-cosenos'],
   keywords: ['pitagoras', 'magnitud', 'longitud', 'cosenos directores', 'geometria analitica'],
+}
+
+// ─── Área con vectores ───────────────────────────────────────────────────────
+
+interface AreaResult { a: number[]; b: number[]; c: number[]; par: number; is2D: boolean }
+
+/** Producto cruz; en 2D se completa con z = 0 y sólo queda la componente z (el determinante) */
+function areaOf(a: number[], b: number[]): AreaResult {
+  sameDims(a, b)
+  const is2D = a.length === 2
+  const [a1, a2, a3 = 0] = a, [b1, b2, b3 = 0] = b
+  const c = [a2 * b3 - a3 * b2, a3 * b1 - a1 * b3, a1 * b2 - a2 * b1]
+  return { a, b, c, par: mag(c), is2D }
+}
+
+function areaSteps(r: AreaResult, names: [string, string]) {
+  const [n1, n2] = names
+  const [a1, a2] = r.a, [b1, b2] = r.b
+  if (r.is2D) {
+    return [
+      { label: 'En el plano, el área es el determinante de las componentes', latex: L`\det=a_1b_2-a_2b_1=(${fmt(a1)})(${fmt(b2)})-(${fmt(a2)})(${fmt(b1)})=${fmt(r.c[2])}` },
+      { label: 'Área del paralelogramo (valor absoluto)', latex: L`A=|${fmt(r.c[2])}|=${fmt(r.par)}` },
+      { label: 'Área del triángulo (la mitad)', latex: L`A_{\triangle}=\tfrac12(${fmt(r.par)})=${fmt(r.par / 2)}` },
+    ]
+  }
+  return [
+    { label: `Producto cruz de ${n1} y ${n2}`, latex: L`${n1}\times${n2}=${fvec(r.c)}` },
+    { label: 'Área del paralelogramo = magnitud del producto cruz', latex: L`A=\sqrt{${r.c.map(x => L`${fp(x)}^2`).join('+')}}=${fmt(r.par)}` },
+    { label: 'Área del triángulo (la mitad)', latex: L`A_{\triangle}=\tfrac12(${fmt(r.par)})=${fmt(r.par / 2)}` },
+  ]
+}
+
+function areaWords(r: AreaResult): Interpretation[] {
+  if (r.par < 1e-12) return [{ tone: 'warn', text: 'El área es 0: los vectores son **paralelos** (o alguno es cero). No encierran ninguna superficie, y si son tres puntos, están alineados.' }]
+  const out: Interpretation[] = [
+    { tone: 'good', text: `El paralelogramo que forman mide $${fmt(r.par)}$ unidades cuadradas, y el triángulo (la mitad) $${fmt(r.par / 2)}$.` },
+  ]
+  if (r.is2D) out.push({ tone: 'info', text: r.c[2] > 0 ? 'El determinante es positivo: para ir del primer vector al segundo se gira en sentido **antihorario**.' : 'El determinante es negativo: para ir del primer vector al segundo se gira en sentido **horario**. El área se toma en valor absoluto.' })
+  else out.push({ tone: 'info', text: `El vector $${fvec(r.c)}$ es perpendicular a la superficie: es su vector normal.` })
+  return out
+}
+
+const areaVectores: Formula = {
+  id: 'area-vectores',
+  name: 'Área entre vectores (paralelogramo y triángulo)',
+  category: 'vectores',
+  ref: '1.6.5',
+  latex: L`A=|\vec a\times\vec b|,\qquad A_{\triangle}=\tfrac12|\vec a\times\vec b|`,
+  forms: [
+    { label: 'En el plano (2D)', latex: L`A=|a_1b_2-a_2b_1|` },
+    { label: 'Con el ángulo', latex: L`A=|\vec a|\,|\vec b|\sin\theta` },
+    { label: 'Triángulo con tres puntos', latex: L`A_{\triangle PQR}=\tfrac12\left|\overrightarrow{PQ}\times\overrightarrow{PR}\right|` },
+  ],
+  summary: 'El área que encierran dos vectores es la magnitud de su producto cruz; la mitad es el área del triángulo.',
+  goal: 'Calcular el área de un paralelogramo o de un triángulo conociendo sólo las coordenadas de sus lados o de sus vértices, sin medir alturas.',
+  variables: [
+    { symbol: L`\vec a,\ \vec b`, meaning: 'Dos lados que salen del mismo vértice' },
+    { symbol: 'A', meaning: 'Área del paralelogramo que forman' },
+    { symbol: L`A_{\triangle}`, meaning: 'Área del triángulo: la mitad del paralelogramo' },
+    { symbol: L`\theta`, meaning: 'Ángulo entre los dos vectores' },
+  ],
+  whenToUse: [
+    'Área de triángulos y paralelogramos dados por coordenadas, en 2D o 3D.',
+    'Saber si tres puntos están alineados: lo están si el área es 0.',
+    'Calcular áreas de superficies en gráficos 3D y en física (flujo a través de una superficie).',
+  ],
+  intuition: [
+    'El área de un paralelogramo es **base × altura**. Si la base es $\\vec a$, la altura es la parte de $\\vec b$ perpendicular a ella: $|\\vec b|\\sin\\theta$.',
+    'Eso es exactamente la magnitud del producto cruz, $|\\vec a||\\vec b|\\sin\\theta$. El producto cruz “calcula la altura” por ti, sin medir ángulos.',
+    'Cualquier triángulo es medio paralelogramo (córtalo por la diagonal), por eso su área es la mitad.',
+    'En 2D el producto cruz sólo tiene componente $z$, que es el determinante $a_1b_2 - a_2b_1$. Su **signo** dice hacia dónde gira $\\vec b$ respecto a $\\vec a$.',
+  ],
+  derivation: {
+    steps: [
+      { label: 'Área = base × altura', latex: L`A=|\vec a|\cdot h` },
+      { label: 'La altura es la componente de b perpendicular a a', latex: L`h=|\vec b|\sin\theta` },
+      { label: 'Ésa es la magnitud del producto cruz', latex: L`A=|\vec a|\,|\vec b|\sin\theta=|\vec a\times\vec b|` },
+      { label: 'En 2D, con z = 0', latex: L`\langle a_1,a_2,0\rangle\times\langle b_1,b_2,0\rangle=\langle0,\,0,\,a_1b_2-a_2b_1\rangle` },
+    ],
+  },
+  calculators: [
+    calc<AreaResult>({
+      id: 'vectores',
+      label: 'Con dos vectores',
+      example: 'los lados $\\vec a = \\langle 4, 1\\rangle$ y $\\vec b = \\langle 1, 3\\rangle$. Cambia a 3D para vectores en el espacio.',
+      inputs: [
+        { kind: 'vector', id: 'a', label: 'Vector a', symbol: L`\vec a`, default: [4, 1] },
+        { kind: 'vector', id: 'b', label: 'Vector b', symbol: L`\vec b`, default: [1, 3] },
+      ],
+      compute: (v) => areaOf(vec(v, 'a'), vec(v, 'b')),
+      steps: (_v, r) => areaSteps(r, [L`\vec a`, L`\vec b`]),
+      answer: (_v, r) => L`A=${fmt(r.par)},\qquad A_{\triangle}=${fmt(r.par / 2)}`,
+      extras: (_v, r) => [{ label: r.is2D ? 'Determinante' : 'a × b', latex: r.is2D ? fmt(r.c[2]) : fvec(r.c) }],
+      interpret: (_v, r) => areaWords(r),
+      visual: (v) => ({ type: 'vectors3d', mode: 'area', a: vec(v, 'a'), b: vec(v, 'b'), view: vec(v, 'a').length === 2 ? 'top' : undefined }),
+    }),
+    calc<AreaResult & { P: number[] }>({
+      id: 'puntos',
+      label: 'Triángulo con tres puntos',
+      example: 'el triángulo con vértices $P(1, 1)$, $Q(5, 2)$ y $R(2, 5)$.',
+      inputs: [
+        { kind: 'vector', id: 'P', label: 'Punto P', symbol: 'P', default: [1, 1] },
+        { kind: 'vector', id: 'Q', label: 'Punto Q', symbol: 'Q', default: [5, 2] },
+        { kind: 'vector', id: 'R', label: 'Punto R', symbol: 'R', default: [2, 5] },
+      ],
+      compute: (v) => {
+        const P = vec(v, 'P'), Q = vec(v, 'Q'), Rr = vec(v, 'R')
+        sameDims(P, Q); sameDims(P, Rr)
+        return { ...areaOf(Q.map((q, i) => q - P[i]), Rr.map((x, i) => x - P[i])), P }
+      },
+      steps: (_v, r) => [
+        { label: 'Vectores que salen de P', latex: L`\overrightarrow{PQ}=Q-P=${fvec(r.a)},\qquad \overrightarrow{PR}=R-P=${fvec(r.b)}` },
+        ...areaSteps(r, [L`\overrightarrow{PQ}`, L`\overrightarrow{PR}`]),
+      ],
+      answer: (_v, r) => L`A_{\triangle PQR}=${fmt(r.par / 2)}`,
+      extras: (_v, r) => [{ label: 'Paralelogramo', latex: fmt(r.par) }],
+      interpret: (_v, r) => areaWords(r),
+      visual: (_v, r) => ({ type: 'vectors3d', mode: 'area', a: r.a, b: r.b, origin: r.P, view: r.is2D ? 'top' : undefined }),
+    }),
+  ],
+  commonMistakes: [
+    'Olvidar el $\\tfrac12$ cuando piden el área del **triángulo**.',
+    'Dejar el determinante negativo: el área siempre es positiva, toma el valor absoluto.',
+    'Usar el producto punto: ése da $|\\vec a||\\vec b|\\cos\\theta$ (qué tan alineados están), no el área.',
+    'Restar al revés las coordenadas: $\\overrightarrow{PQ} = Q - P$ (punto final menos punto inicial).',
+  ],
+  related: ['producto-cruz', 'producto-punto', 'distancia-puntos'],
+  keywords: ['area entre vectores', 'paralelogramo', 'triangulo', 'determinante', 'tres puntos', 'colineales'],
 }
 
 // ─── Ley de cosenos ──────────────────────────────────────────────────────────
@@ -451,4 +579,4 @@ const leyCosenos: Formula = {
   keywords: ['triangulo', 'pitagoras', 'trigonometria', 'resolver triangulos'],
 }
 
-export const VECTORES: Formula[] = [productoPunto, productoCruz, distancia, leyCosenos]
+export const VECTORES: Formula[] = [productoPunto, productoCruz, areaVectores, distancia, leyCosenos]

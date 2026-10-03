@@ -19,7 +19,9 @@ export function fmt(x: number, dec = 4): string {
     if (Math.abs(mant) >= 10) { mant = round(mant / 10, 3); e += 1 }
     return `${mant}\\times10^{${e}}`
   }
-  const r = round(x, dec)
+  // en números grandes los decimales sólo agregan ruido: dejamos unas 6 cifras significativas
+  const digits = Math.floor(Math.log10(abs)) + 1
+  const r = round(x, digits > 0 ? Math.min(dec, Math.max(0, 6 - digits)) : dec)
   return r === 0 ? '0' : String(r)
 }
 

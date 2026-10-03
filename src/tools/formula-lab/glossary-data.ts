@@ -5,7 +5,7 @@
 
 import type { Formula } from './types'
 
-export type GlossaryGroup = 'notacion' | 'vectores' | 'estadistica' | 'griegas' | 'unidades'
+export type GlossaryGroup = 'notacion' | 'vectores' | 'estadistica' | 'griegas' | 'quimica' | 'unidades'
 
 export interface GlossaryEntry {
   id: string
@@ -24,6 +24,7 @@ export const GLOSSARY_GROUPS: { id: GlossaryGroup; label: string; description: s
   { id: 'vectores', label: 'Vectores', description: 'Flechas, magnitudes y productos entre vectores' },
   { id: 'estadistica', label: 'Probabilidad y estadística', description: 'Medias, desviaciones y probabilidades' },
   { id: 'griegas', label: 'Letras griegas en física', description: 'Qué representa cada letra en las fórmulas de física' },
+  { id: 'quimica', label: 'Química', description: 'Concentraciones, electroquímica y estructura atómica' },
   { id: 'unidades', label: 'Unidades y prefijos', description: 'Qué significa cada unidad del Sistema Internacional' },
 ]
 
@@ -45,7 +46,7 @@ export const GLOSSARY: GlossaryEntry[] = [
   { id: 'pi', group: 'notacion', symbol: '\\pi', name: 'Pi', meaning: 'La razón entre el perímetro y el diámetro de cualquier círculo: $\\pi \\approx 3.14159$.', match: /\\pi/ },
   { id: 'euler', group: 'notacion', symbol: 'e', name: 'Número de Euler', meaning: 'Constante $e \\approx 2.71828$, base del crecimiento y decaimiento exponencial. Aparece al pasar de muchos intentos pequeños a un proceso continuo.', example: 'e^{-3}\\approx0.0498', match: /e\^/ },
   { id: 'trig', group: 'notacion', symbol: '\\sin,\\ \\cos,\\ \\tan', name: 'Funciones trigonométricas', read: '“seno, coseno, tangente”', meaning: 'Relacionan un ángulo con las proporciones de un triángulo rectángulo. En el formulario el seno se escribe **sen**. Revisa si tu calculadora está en grados o radianes.', example: '\\cos60^\\circ=0.5', match: /\\sin|\\cos|\\tan/ },
-  { id: 'trig-inversa', group: 'notacion', symbol: '\\cos^{-1}', name: 'Función trigonométrica inversa', read: '“arco coseno”', meaning: 'Hace el camino contrario: dado un valor, devuelve **el ángulo**. $\\cos^{-1}(0.5) = 60^\\circ$. El $-1$ **no** es un exponente.', match: /\^\{-1\}/ },
+  { id: 'trig-inversa', group: 'notacion', symbol: '\\cos^{-1}', name: 'Función trigonométrica inversa', read: '“arco coseno”', meaning: 'Hace el camino contrario: dado un valor, devuelve **el ángulo**. $\\cos^{-1}(0.5) = 60^\\circ$. El $-1$ **no** es un exponente.', match: /\\(sin|cos|tan)\^\{-1\}/ },
   { id: 'parcial', group: 'notacion', symbol: '\\frac{\\partial S}{\\partial b}', name: 'Derivada parcial', meaning: 'Cuánto cambia $S$ cuando sólo cambia $b$ y todo lo demás queda fijo. Igualarla a 0 sirve para encontrar mínimos o máximos.', match: /\\partial/ },
 
   // ─── Vectores ──────────────────────────────────────────────────────────────
@@ -59,7 +60,7 @@ export const GLOSSARY: GlossaryEntry[] = [
 
   // ─── Estadística ───────────────────────────────────────────────────────────
   { id: 'media-muestral', group: 'estadistica', symbol: '\\bar x', name: 'Media muestral', read: '“x barra”', meaning: 'El promedio de los datos de una **muestra**.', match: /\\bar x/ },
-  { id: 'mu', group: 'estadistica', symbol: '\\mu', name: 'Media poblacional', read: '“mu”', meaning: 'El promedio de **toda la población**, o el valor esperado de una distribución. Ojo: en unidades, $\\mu$ es el prefijo micro ($10^{-6}$), como en $\\mu\\mathrm{C}$.', match: /\\mu/ },
+  { id: 'mu', group: 'estadistica', symbol: '\\mu', name: 'Media poblacional', read: '“mu”', meaning: 'El promedio de **toda la población**, o el valor esperado de una distribución. Ojo: en unidades, $\\mu$ es el prefijo micro ($10^{-6}$), como en $\\mu\\mathrm{C}$; y en química, el momento magnético.', match: /\\mu/ },
   { id: 'sigma', group: 'estadistica', symbol: '\\sigma', name: 'Desviación estándar poblacional', read: '“sigma”', meaning: 'Qué tan dispersos están los datos de toda la población alrededor de $\\mu$. $\\sigma^2$ es la **varianza**.', match: /\\sigma/ },
   { id: 's', group: 'estadistica', symbol: 's', name: 'Desviación estándar muestral', meaning: 'La dispersión calculada con los datos de una **muestra** (dividiendo entre $n-1$).' },
   { id: 'n', group: 'estadistica', symbol: 'n,\\ N', name: 'Tamaño de muestra y de población', meaning: '$n$ es cuántos datos tiene la muestra; $N$, cuántos elementos tiene la población completa.' },
@@ -72,7 +73,7 @@ export const GLOSSARY: GlossaryEntry[] = [
   { id: 'r', group: 'estadistica', symbol: 'r', name: 'Coeficiente de correlación', meaning: 'Número entre $-1$ y $1$ que mide qué tan alineados están unos datos $(x, y)$ sobre una recta.' },
   { id: 'z', group: 'estadistica', symbol: 'z', name: 'Puntuación Z', meaning: 'Cuántas desviaciones estándar está un valor por encima (positiva) o por debajo (negativa) de la media.', match: /z=/ },
   { id: 'alfa', group: 'estadistica', symbol: '\\alpha,\\ z_{\\alpha/2}', name: 'Nivel de significancia y valor crítico', read: '“alfa”', meaning: '$\\alpha = 1 -$ confianza (por ejemplo, $0.05$ para 95%). $z_{\\alpha/2}$ es el valor de $z$ que deja $\\alpha/2$ en cada cola. En física, $\\alpha$ también es el coeficiente de dilatación.', match: /\\alpha\/2/ },
-  { id: 'gl', group: 'estadistica', symbol: 'gl', name: 'Grados de libertad', meaning: 'Cuántos datos pueden variar libremente después de estimar algo con ellos. En la t de Student de una muestra, $gl = n - 1$.', match: /gl/ },
+  { id: 'gl', group: 'estadistica', symbol: 'gl', name: 'Grados de libertad', meaning: 'Cuántos datos pueden variar libremente después de estimar algo con ellos. En la t de Student de una muestra, $gl = n - 1$.', match: /(^|[^a-z])gl([^a-z]|$)/ },
 
   // ─── Griegas en física ─────────────────────────────────────────────────────
   { id: 'theta', group: 'griegas', symbol: '\\theta', name: 'Theta: ángulo', read: '“teta”', meaning: 'Casi siempre representa un **ángulo**: entre dos vectores, de incidencia de la luz, de inclinación.', match: /\\theta/ },
@@ -81,6 +82,19 @@ export const GLOSSARY: GlossaryEntry[] = [
   { id: 'eta', group: 'griegas', symbol: '\\eta', name: 'Eta: eficiencia', read: '“eta”', meaning: 'Qué fracción de la energía que entra se aprovecha. Va de 0 a 1 (o de 0% a 100%).', match: /\\eta/ },
   { id: 'omega', group: 'griegas', symbol: '\\Omega', name: 'Omega mayúscula: ohm', read: '“ohm”', meaning: 'La unidad de resistencia eléctrica. $1\\ \\Omega = 1\\ \\mathrm{V/A}$.', match: /\\Omega|Ω/ },
   { id: 'epsilon', group: 'griegas', symbol: '\\epsilon_0', name: 'Épsilon cero: permitividad del vacío', read: '“épsilon cero”', meaning: 'Constante eléctrica, $\\epsilon_0 = 8.85\\times10^{-12}\\ \\mathrm{C^2/(N\\cdot m^2)}$. Se relaciona con la de Coulomb: $k = \\frac{1}{4\\pi\\epsilon_0}$.' },
+
+  // ─── Química ───────────────────────────────────────────────────────────────
+  { id: 'corchetes', group: 'quimica', symbol: '[\\mathrm{H^+}]', name: 'Corchetes: concentración molar', read: '“concentración de H más”', meaning: 'Unos corchetes alrededor de una especie significan su **concentración en mol/L**.', match: /\[\\mathrm/ },
+  { id: 'molaridad-M', group: 'quimica', symbol: 'M', name: 'Molaridad', read: '“molar”', meaning: 'Moles de soluto por litro de disolución. “0.5 M” se lee “0.5 molar”. Ojo: en otras fórmulas $M$ también es masa molar.' },
+  { id: 'molalidad-m', group: 'quimica', symbol: 'm', name: 'Molalidad', read: '“molal”', meaning: 'Moles de soluto por kilogramo de **disolvente**. En física, $m$ casi siempre es masa: revisa el contexto.' },
+  { id: 'mol-n', group: 'quimica', symbol: 'n', name: 'Moles', meaning: 'Cantidad de sustancia: $n = \\frac{\\text{masa}}{\\text{masa molar}}$. En electroquímica, $n$ es el número de electrones transferidos.' },
+  { id: 'estandar', group: 'quimica', symbol: 'E^\\circ,\\ \\Delta H^\\circ', name: 'Superíndice ° (condiciones estándar)', read: '“estándar”', meaning: 'El círculo indica condiciones estándar: concentraciones 1 M y gases a 1 bar (muchos textos usan 1 atm; la diferencia es mínima). Las tablas suelen darse a 25 °C.', match: /\^\\circ/ },
+  { id: 'faraday-F', group: 'quimica', symbol: 'F', name: 'Constante de Faraday', meaning: 'Carga de un mol de electrones: $F = 96\\,485\\ \\mathrm{C/mol}$.', match: /zF|nF|\\frac\{MIt\}/ },
+  { id: 'cociente-Q', group: 'quimica', symbol: 'Q,\\ K', name: 'Cociente de reacción y constante de equilibrio', meaning: '$Q = \\frac{[\\text{productos}]}{[\\text{reactivos}]}$ (con los coeficientes como exponentes) en cualquier momento; $K$ es el valor de $Q$ cuando la reacción llega al equilibrio.', match: /\\log Q|\\log K/ },
+  { id: 'planck-h', group: 'quimica', symbol: 'h', name: 'Constante de Planck', meaning: '$h = 6.626\\times10^{-34}\\ \\mathrm{J\\cdot s}$: relaciona la energía de un fotón con su frecuencia.', match: /hf|hc|\\frac\{h\}/ },
+  { id: 'nu', group: 'quimica', symbol: '\\nu,\\ f', name: 'Nu: frecuencia', read: '“nu”', meaning: 'Oscilaciones por segundo (Hz). En química suele escribirse $\\nu$ y en física $f$.' },
+  { id: 'ph-p', group: 'quimica', symbol: '\\text{pH}', name: 'pH (la “p” es −log)', meaning: '$\\text{pX} = -\\log X$. Convierte concentraciones diminutas en números cómodos: $[\\mathrm{H^+}] = 10^{-3}$ da pH 3.', match: /\\text\{pH\}/ },
+  { id: 'ev', group: 'quimica', symbol: '\\mathrm{eV}', name: 'Electronvolt', meaning: 'La energía que gana un electrón al pasar por 1 V: $1\\ \\mathrm{eV} = 1.602\\times10^{-19}\\ \\mathrm{J}$. Cómoda para fotones y electrones.' },
 
   // ─── Unidades ──────────────────────────────────────────────────────────────
   { id: 'newton', group: 'unidades', symbol: '\\mathrm{N}', name: 'Newton (fuerza)', meaning: 'La fuerza que acelera 1 kg a 1 m/s². $1\\ \\mathrm{N} = 1\\ \\mathrm{kg\\cdot m/s^2}$.' },

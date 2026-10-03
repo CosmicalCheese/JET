@@ -3,11 +3,13 @@ import { ESTADISTICA } from './estadistica'
 import { PROBABILIDAD } from './probabilidad'
 import { VECTORES } from './vectores'
 import { FISICA } from './fisica'
+import { QUIMICA } from './quimica'
 
 export const AREAS: { id: AreaId; label: string }[] = [
   { id: 'matematicas', label: 'Matemáticas' },
   { id: 'estadistica', label: 'Probabilidad y estadística' },
   { id: 'fisica', label: 'Física' },
+  { id: 'quimica', label: 'Química' },
 ]
 
 export const CATEGORIES: Category[] = [
@@ -21,9 +23,13 @@ export const CATEGORIES: Category[] = [
   { id: 'termodinamica', area: 'fisica', label: 'Termodinámica', description: 'Calor, gases y máquinas térmicas' },
   { id: 'ondas', area: 'fisica', label: 'Ondas y óptica', description: 'Refracción y longitud de onda' },
   { id: 'fluidos', area: 'fisica', label: 'Mecánica de fluidos', description: 'Presión y flujo' },
+  { id: 'disoluciones', area: 'quimica', label: 'Disoluciones', description: 'Concentración y dilución' },
+  { id: 'atomica', area: 'quimica', label: 'Estructura atómica', description: 'Fotones, espectros y cuántica' },
+  { id: 'electroquimica', area: 'quimica', label: 'Electroquímica', description: 'Pilas, potenciales y electrólisis' },
+  { id: 'termoquimica', area: 'quimica', label: 'Termoquímica y ácido-base', description: 'Entalpía, presión de vapor y pH' },
 ]
 
-export const FORMULAS: Formula[] = [...VECTORES, ...PROBABILIDAD, ...ESTADISTICA, ...FISICA]
+export const FORMULAS: Formula[] = [...VECTORES, ...PROBABILIDAD, ...ESTADISTICA, ...FISICA, ...QUIMICA]
 
 const byId = new Map(FORMULAS.map(f => [f.id, f]))
 
