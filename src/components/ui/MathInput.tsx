@@ -3,8 +3,9 @@ import { ChevronDown, ChevronUp } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { MathfieldElement, convertLatexToMarkup } from 'mathlive'
 
-// Configure MathLive to find fonts in the public directory
-MathfieldElement.fontsDirectory = '/fonts/'
+// The KaTeX fonts are bundled by 'mathlive/static.css' (imported in main.tsx),
+// so MathLive's runtime loader must not try to fetch them from a fonts folder.
+MathfieldElement.fontsDirectory = null
 
 // ---------------------------------------------------------------------------
 // Symbol keyboard definitions (Symbolab-style categories)
