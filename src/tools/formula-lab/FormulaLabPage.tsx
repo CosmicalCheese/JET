@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
-  AlertTriangle, ArrowLeft, ArrowRight, BookOpen, CheckCircle2, ChevronDown, ChevronUp,
-  Info, Plus, RotateCcw, Search, Trash2, Wrench,
+  AlertTriangle, ArrowDown, ArrowLeft, ArrowRight, BookOpen, CheckCircle2, ChevronDown, ChevronUp,
+  Info, Library, Plus, RotateCcw, Search, Trash2, Wrench,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { Button } from '../../components/ui/Button'
@@ -10,11 +10,14 @@ import { AREAS, CATEGORIES, getCategory, getFormula, searchFormulas } from './fo
 import type { Calculator, CategoryId, Formula, InputDef, Interpretation, Values } from './types'
 import { Rich, Tex } from './Tex'
 import { Visual } from './visuals'
+import { Glossary } from './GlossaryPage'
+import { glossaryFor } from './glossary-data'
 
 // ═══ Router entry ════════════════════════════════════════════════════════════
 
 export function FormulaLabPage() {
   const { formulaId } = useParams<{ formulaId: string }>()
+  if (formulaId === 'glosario') return <Glossary />
   const formula = getFormula(formulaId)
   if (formulaId && !formula) return <Catalog notFound={formulaId} />
   if (!formula) return <Catalog />
@@ -50,7 +53,8 @@ function Catalog({ notFound }: { notFound?: string }) {
       )}
 
       <div className="space-y-3">
-        <div className="relative max-w-md">
+        <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full max-w-md">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
           <input
             value={query}
@@ -58,6 +62,13 @@ function Catalog({ notFound }: { notFound?: string }) {
             placeholder="Buscar: producto punto, binomial, presión…"
             className="w-full rounded-lg border border-zinc-200 bg-white pl-9 pr-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
           />
+        </div>
+        <Link
+          to="/formula-lab/glosario"
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2 hover:bg-violet-100"
+        >
+          <Library size={13} /> Glosario de símbolos
+        </Link>
         </div>
         <div className="flex flex-wrap gap-1.5">
           <Chip active={cat === 'all'} onClick={() => setCat('all')}>Todas</Chip>
@@ -135,45 +146,53 @@ function FormulaCard({ formula }: { formula: Formula }) {
 function Detail({ formula }: { formula: Formula }) {
   const category = getCategory(formula.category)
   const related = (formula.related ?? []).map(getFormula).filter((f): f is Formula => !!f)
+  const notation = glossaryFor(formula)
+  const toExplanation = () => document.getElementById('explicacion')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
   return (
     <div className="space-y-6">
+      {/* ── Encabezado ── */}
       <div className="space-y-3">
         <Link to="/formula-lab" className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-500 hover:text-blue-600">
           <ArrowLeft size={13} /> Formula Lab
           <span className="text-zinc-300">/</span>
           <span>{category.label}</span>
         </Link>
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <h2 className="text-2xl font-bold text-zinc-900">{formula.name}</h2>
-            <p className="text-sm text-zinc-500 mt-1 max-w-2xl"><Rich text={formula.summary} /></p>
-          </div>
-          <div className="flex items-center gap-2">
-            {formula.ref && (
-              <span className="text-xs text-zinc-500 bg-zinc-50 border border-zinc-200 rounded-lg px-2.5 py-1.5">
-                Formulario §{formula.ref}
-              </span>
-            )}
-            {formula.toolLink && (
-              <Link
-                to={formula.toolLink.path}
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-2.5 py-1.5 hover:bg-blue-100"
-              >
-                <Wrench size={12} /> Abrir {formula.toolLink.label}
-              </Link>
-            )}
-          </div>
+        <div>
+          <h2 className="text-2xl font-bold text-zinc-900">{formula.name}</h2>
+          <p className="text-sm text-zinc-500 mt-1 max-w-2xl"><Rich text={formula.summary} /></p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={toExplanation}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-lg px-2.5 py-1.5 hover:bg-violet-100"
+          >
+            <ArrowDown size={12} /> Entender la fórmula
+          </button>
+          {formula.toolLink && (
+            <Link
+              to={formula.toolLink.path}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-2.5 py-1.5 hover:bg-blue-100"
+            >
+              <Wrench size={12} /> Abrir {formula.toolLink.label}
+            </Link>
+          )}
+          {formula.ref && (
+            <span className="text-xs text-zinc-500 bg-zinc-50 border border-zinc-200 rounded-lg px-2.5 py-1.5">
+              Formulario §{formula.ref}
+            </span>
+          )}
         </div>
       </div>
 
       {/* ── Fórmula ── */}
-      <div className="bg-white border border-zinc-200 rounded-lg px-5 py-6">
-        <div className="text-2xl text-zinc-900 text-center">
+      <div className="bg-white border border-zinc-200 rounded-lg px-4 py-4 sm:px-5">
+        <div className="text-xl sm:text-2xl text-zinc-900 text-center">
           <Tex latex={formula.latex} display />
         </div>
+        {/* en el teléfono las otras formas bajan a la explicación para que el ejemplo quede arriba */}
         {formula.forms && (
-          <div className="mt-5 pt-4 border-t border-zinc-100 grid gap-3 sm:grid-cols-2">
+          <div className="hidden md:grid mt-3 pt-3 border-t border-zinc-100 gap-3 grid-cols-2">
             {formula.forms.map(f => (
               <div key={f.label} className="min-w-0">
                 <p className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wide">{f.label}</p>
@@ -184,12 +203,35 @@ function Detail({ formula }: { formula: Formula }) {
         )}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] items-start">
-        {/* ── Teoría ── */}
-        <div className="space-y-4 min-w-0">
+      {/* ── Primero la práctica ── */}
+      <CalculatorPanel formula={formula} />
+
+      {/* ── Después la teoría ── */}
+      <section id="explicacion" className="scroll-mt-6 space-y-4 pt-2">
+        <div className="flex items-center gap-3">
+          <h3 className="text-lg font-bold text-zinc-900 flex items-center gap-2"><BookOpen size={18} className="text-violet-500" /> Entender la fórmula</h3>
+          <div className="h-px flex-1 bg-zinc-200" />
+        </div>
+
+        <div className="columns-1 lg:columns-2 gap-4 [&>*]:mb-4 [&>*]:break-inside-avoid">
           <Panel title="¿Qué estamos buscando?">
             <p className="text-sm text-zinc-700 leading-relaxed"><Rich text={formula.goal} /></p>
           </Panel>
+
+          {formula.forms && (
+            <div className="md:hidden">
+              <Panel title="Otras formas de la fórmula">
+                <div className="space-y-3">
+                  {formula.forms.map(f => (
+                    <div key={f.label} className="min-w-0">
+                      <p className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wide">{f.label}</p>
+                      <div className="text-zinc-800"><Tex latex={f.latex} display /></div>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+            </div>
+          )}
 
           <Panel title="¿Qué significa cada símbolo?">
             <dl className="divide-y divide-zinc-100">
@@ -203,6 +245,26 @@ function Detail({ formula }: { formula: Formula }) {
                 </div>
               ))}
             </dl>
+            {notation.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-zinc-100 space-y-2">
+                <p className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wide">Notación que aparece aquí</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {notation.map(g => (
+                    <Link
+                      key={g.id}
+                      to={`/formula-lab/glosario#g-${g.id}`}
+                      title={g.name}
+                      className="inline-flex items-center gap-1.5 text-xs text-zinc-600 bg-zinc-50 border border-zinc-200 rounded-md px-2 py-1 hover:border-violet-300 hover:text-violet-700"
+                    >
+                      <span className="text-zinc-900"><Tex latex={g.symbol} /></span> {g.name}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+            <Link to="/formula-lab/glosario" className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-violet-700 hover:underline">
+              Glosario completo de símbolos <ArrowRight size={11} />
+            </Link>
           </Panel>
 
           <Panel title="La idea">
@@ -245,10 +307,7 @@ function Detail({ formula }: { formula: Formula }) {
             </Panel>
           )}
         </div>
-
-        {/* ── Práctica ── */}
-        <CalculatorPanel formula={formula} />
-      </div>
+      </section>
     </div>
   )
 }
@@ -352,6 +411,16 @@ function CalculatorPanel({ formula }: { formula: Formula }) {
   const result = useMemo(() => evaluate(calc, raw), [calc, raw])
 
   const set = (id: string, value: RawValue) => setRaw(prev => ({ ...prev, [id]: value }))
+  // 2D ↔ 3D cambia todos los vectores juntos: operar vectores de distinta dimensión no tiene sentido
+  const setDims = (dims: number) => setRaw(prev => {
+    const next = { ...prev }
+    for (const i of calc.inputs) {
+      if (i.kind !== 'vector' || i.fixedDims) continue
+      const comps = prev[i.id] as string[]
+      next[i.id] = dims === 3 ? [...comps.slice(0, 2), comps[2] ?? '0'] : comps.slice(0, 2)
+    }
+    return next
+  })
   const reset = () => setRaw(prev => {
     const next = { ...prev }
     for (const i of calc.inputs) next[i.id] = toRaw(i)
@@ -359,79 +428,85 @@ function CalculatorPanel({ formula }: { formula: Formula }) {
   })
 
   return (
-    <div className="space-y-4 min-w-0">
-      <div className="bg-white border border-zinc-200 rounded-lg p-5 space-y-4">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <p className="text-xs font-bold text-zinc-700 uppercase tracking-wide">Ejemplo interactivo</p>
-          <button onClick={reset} className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-blue-600" title="Restaurar el ejemplo">
-            <RotateCcw size={12} /> Restaurar ejemplo
-          </button>
-        </div>
+    <section aria-label="Ejemplo interactivo" className="grid gap-4 lg:grid-cols-2 items-start">
+      <div className="space-y-4 min-w-0">
+        <div className="bg-white border-2 border-blue-100 rounded-lg p-4 sm:p-5 space-y-4">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-xs font-bold text-blue-700 uppercase tracking-wide">Ejemplo interactivo · cambia los datos</p>
+            <button onClick={reset} className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-blue-600" title="Restaurar el ejemplo">
+              <RotateCcw size={12} /> Restaurar ejemplo
+            </button>
+          </div>
 
-        {formula.calculators.length > 1 && (
-          <div className="flex flex-wrap gap-1 p-1 bg-zinc-100 rounded-lg w-fit">
-            {formula.calculators.map((c, i) => (
-              <button
-                key={c.id}
-                onClick={() => setTab(i)}
-                className={cn('px-3 py-1.5 rounded-md text-xs font-medium transition-colors', i === tab ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-800')}
-              >
-                {c.label}
-              </button>
+          {formula.calculators.length > 1 && (
+            <div className="flex flex-wrap gap-1 p-1 bg-zinc-100 rounded-lg w-fit">
+              {formula.calculators.map((c, i) => (
+                <button
+                  key={c.id}
+                  onClick={() => setTab(i)}
+                  className={cn('px-3 py-1.5 rounded-md text-xs font-medium transition-colors', i === tab ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-800')}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {calc.example && (
+            <p className="text-xs text-zinc-500"><span className="font-medium text-zinc-600">Ejemplo:</span> <Rich text={calc.example} /></p>
+          )}
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            {calc.inputs.map(input => (
+              <InputField key={input.id} input={input} value={raw[input.id]} onChange={v => set(input.id, v)} onDims={setDims} />
             ))}
           </div>
-        )}
-
-        {calc.example && (
-          <p className="text-xs text-zinc-500"><span className="font-medium text-zinc-600">Ejemplo:</span> <Rich text={calc.example} /></p>
-        )}
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          {calc.inputs.map(input => (
-            <InputField key={input.id} input={input} value={raw[input.id]} onChange={v => set(input.id, v)} />
-          ))}
         </div>
+
+        {result.error ? (
+          <div className="flex gap-2 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+            <AlertTriangle size={16} className="shrink-0 mt-0.5 text-amber-500" />
+            <Rich text={result.error} />
+          </div>
+        ) : (
+          <>
+            <div className="bg-blue-50/60 border border-blue-200 rounded-lg px-5 py-4 space-y-3">
+              <p className="text-[11px] font-bold text-blue-700 uppercase tracking-wide">Resultado</p>
+              <div className="text-xl text-zinc-900"><Tex latex={result.answer!} display /></div>
+              {result.extras!.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {result.extras!.map(e => (
+                    <div key={e.label} className="bg-white border border-blue-100 rounded-md px-2.5 py-1.5">
+                      <p className="text-[10px] text-zinc-400 uppercase tracking-wide">{e.label}</p>
+                      <div className="text-sm text-zinc-800"><Tex latex={e.latex} /></div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <Panel title="¿Qué significa?">
+              <ul className="space-y-2.5">
+                {result.interpretation!.map((it, i) => <InterpretationItem key={i} item={it} />)}
+              </ul>
+              {result.tool && (
+                <div className="mt-4 pt-4 border-t border-zinc-100">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => { result.tool!.prefill?.(); navigate(result.tool!.path) }}
+                  >
+                    {result.tool.label} <ArrowRight size={13} />
+                  </Button>
+                </div>
+              )}
+            </Panel>
+          </>
+        )}
       </div>
 
-      {result.error ? (
-        <div className="flex gap-2 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
-          <AlertTriangle size={16} className="shrink-0 mt-0.5 text-amber-500" />
-          <Rich text={result.error} />
-        </div>
-      ) : (
-        <>
-          <div className="bg-blue-50/60 border border-blue-200 rounded-lg px-5 py-4 space-y-3">
-            <p className="text-[11px] font-bold text-blue-700 uppercase tracking-wide">Resultado</p>
-            <div className="text-xl text-zinc-900"><Tex latex={result.answer!} display /></div>
-            {result.extras!.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {result.extras!.map(e => (
-                  <div key={e.label} className="bg-white border border-blue-100 rounded-md px-2.5 py-1.5">
-                    <p className="text-[10px] text-zinc-400 uppercase tracking-wide">{e.label}</p>
-                    <div className="text-sm text-zinc-800"><Tex latex={e.latex} /></div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <Panel title="¿Qué significa?">
-            <ul className="space-y-2.5">
-              {result.interpretation!.map((it, i) => <InterpretationItem key={i} item={it} />)}
-            </ul>
-            {result.tool && (
-              <div className="mt-4 pt-4 border-t border-zinc-100">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => { result.tool!.prefill?.(); navigate(result.tool!.path) }}
-                >
-                  {result.tool.label} <ArrowRight size={13} />
-                </Button>
-              </div>
-            )}
-          </Panel>
-
+      {!result.error && (
+        <div className="space-y-4 min-w-0">
           {result.visual && (
             <Panel title="Gráfica">
               <Visual spec={result.visual} />
@@ -441,15 +516,15 @@ function CalculatorPanel({ formula }: { formula: Formula }) {
           <Panel title="Paso a paso con tus datos">
             <StepList steps={result.steps!} />
           </Panel>
-        </>
+        </div>
       )}
-    </div>
+    </section>
   )
 }
 
 const inputClass = 'w-full rounded border border-zinc-200 px-2 py-1.5 text-sm font-mono outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400'
 
-function InputField({ input, value, onChange }: { input: InputDef; value: RawValue; onChange: (v: RawValue) => void }) {
+function InputField({ input, value, onChange, onDims }: { input: InputDef; value: RawValue; onChange: (v: RawValue) => void; onDims: (dims: number) => void }) {
   const label = (
     <span className="flex items-center gap-1.5 text-xs font-medium text-zinc-600 mb-1">
       <span className="text-zinc-900"><Tex latex={input.symbol} /></span>
@@ -469,7 +544,6 @@ function InputField({ input, value, onChange }: { input: InputDef; value: RawVal
 
     case 'vector': {
       const comps = value as string[]
-      const toggle = (dims: number) => onChange(dims === 3 ? [...comps.slice(0, 2), comps[2] ?? '0'] : comps.slice(0, 2))
       return (
         <div>
           <div className="flex items-center justify-between">
@@ -477,7 +551,7 @@ function InputField({ input, value, onChange }: { input: InputDef; value: RawVal
             {!input.fixedDims && (
               <div className="flex text-[10px] font-medium rounded border border-zinc-200 overflow-hidden mb-1">
                 {[2, 3].map(d => (
-                  <button key={d} onClick={() => toggle(d)} className={cn('px-1.5 py-0.5', comps.length === d ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:bg-zinc-50')}>{d}D</button>
+                  <button key={d} onClick={() => onDims(d)} className={cn('px-1.5 py-0.5', comps.length === d ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:bg-zinc-50')}>{d}D</button>
                 ))}
               </div>
             )}

@@ -2,6 +2,7 @@ import { useId } from 'react'
 import type { VisualSpec } from './types'
 import { fmt, normalCDF, round, toRad } from './format'
 import { Tex } from './Tex'
+import { Vectors3DVisual } from './visuals3d'
 
 const W = 360
 const H = 240
@@ -21,6 +22,8 @@ const C = {
 export function Visual({ spec }: { spec: VisualSpec }) {
   switch (spec.type) {
     case 'vectors': return <VectorsVisual {...spec} />
+    // key: al cambiar de modo se reinicia la cámara
+    case 'vectors3d': return <Vectors3DVisual key={spec.mode} {...spec} />
     case 'regression': return <RegressionVisual {...spec} />
     case 'normal': return <NormalVisual {...spec} />
     case 'bars': return <BarsVisual {...spec} />
@@ -64,30 +67,17 @@ function Arrow({ id, color }: { id: string; color: string }) {
   )
 }
 
-// ─── Vectores: producto punto (proyección) y cruz (paralelogramo) ────────────
+// ─── Vectores 2D: producto punto (proyección) ────────────────────────────────
 
-function VectorsVisual({ mode, a, b }: { mode: 'dot' | 'cross'; a: number[]; b: number[] }) {
+function VectorsVisual({ a, b }: { a: number[]; b: number[] }) {
   const uid = useId().replace(/:/g, '')
-  const flat = a.length === 2 || (a[2] === 0 && b[2] === 0)
-  const ma = Math.hypot(...a), mb = Math.hypot(...b)
-  if (ma === 0 || mb === 0) return null
-
-  // En 2D usamos las coordenadas reales; en 3D dibujamos en el plano que forman a y b
-  let pa: [number, number], pb: [number, number]
-  if (flat) {
-    pa = [a[0], a[1]]
-    pb = [b[0], b[1]]
-  } else {
-    const dot = a.reduce((s, c, i) => s + c * b[i], 0)
-    const th = Math.acos(Math.max(-1, Math.min(1, dot / (ma * mb))))
-    pa = [ma, 0]
-    pb = [mb * Math.cos(th), mb * Math.sin(th)]
-  }
+  if (Math.hypot(...a) === 0 || Math.hypot(...b) === 0) return null
+  const pa: [number, number] = [a[0], a[1]]
+  const pb: [number, number] = [b[0], b[1]]
 
   const k = (pa[0] * pb[0] + pa[1] * pb[1]) / (pa[0] ** 2 + pa[1] ** 2)
   const proj: [number, number] = [pa[0] * k, pa[1] * k]
-  const sum: [number, number] = [pa[0] + pb[0], pa[1] + pb[1]]
-  const pts = [[0, 0], pa, pb, ...(mode === 'dot' ? [proj] : [sum])]
+  const pts = [[0, 0], pa, pb, proj]
   const xs = pts.map(p => p[0]), ys = pts.map(p => p[1])
   let x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys)
   const span = Math.max(x1 - x0, y1 - y0, 1e-9)
@@ -110,48 +100,34 @@ function VectorsVisual({ mode, a, b }: { mode: 'dot' | 'cross'; a: number[]; b: 
 
   return (
     <Frame
-      caption={mode === 'dot'
-        ? <>La línea punteada baja desde la punta de <Tex latex="\vec b" /> hasta la recta de <Tex latex="\vec a" />. El segmento violeta es la <b>sombra</b> de <Tex latex="\vec b" /> sobre <Tex latex="\vec a" />: el producto punto es esa sombra × <Tex latex="|\vec a|" />.{!flat && ' (Vista en el plano que forman los dos vectores.)'}</>
-        : <>El área sombreada es el paralelogramo que forman <Tex latex="\vec a" /> y <Tex latex="\vec b" />. Su área es <Tex latex="|\vec a\times\vec b|" />, y el vector resultado sale perpendicular a esta hoja.{!flat && ' (Vista en el plano que forman los dos vectores.)'}</>}
+      caption={<>La línea punteada baja desde la punta de <Tex latex="\vec b" /> hasta la recta de <Tex latex="\vec a" />. El segmento violeta es la <b>sombra</b> de <Tex latex="\vec b" /> sobre <Tex latex="\vec a" />: el producto punto es esa sombra × <Tex latex="|\vec a|" />.</>}
     >
       <defs>
         <Arrow id={`${uid}a`} color={C.a} />
         <Arrow id={`${uid}b`} color={C.b} />
       </defs>
-      {flat && (
-        <g stroke={C.axis} strokeWidth={1}>
-          <line x1={0} x2={W} y1={Y(0)} y2={Y(0)} />
-          <line x1={X(0)} x2={X(0)} y1={0} y2={H} />
-        </g>
-      )}
-      {mode === 'cross' && (
-        <polygon
-          points={[[0, 0], pa, sum, pb].map(p => `${X(p[0])},${Y(p[1])}`).join(' ')}
-          fill="#f59e0b" fillOpacity={0.18} stroke="#f59e0b" strokeOpacity={0.6} strokeDasharray="4 3"
-        />
-      )}
-      {mode === 'dot' && (
-        <>
-          {/* recta de a extendida */}
-          <line x1={X(-pa[0] * 3)} y1={Y(-pa[1] * 3)} x2={X(pa[0] * 3)} y2={Y(pa[1] * 3)} stroke={C.a} strokeOpacity={0.15} />
-          <line x1={X(pb[0])} y1={Y(pb[1])} x2={X(proj[0])} y2={Y(proj[1])} stroke={C.text} strokeDasharray="4 3" />
-          {(() => {
-            // la sombra se dibuja desplazada del lado opuesto a b para que no la tape a
-            const ux = X(pa[0]) - X(0), uy = Y(pa[1]) - Y(0)
-            const len = Math.hypot(ux, uy) || 1
-            let nx = -uy / len, ny = ux / len
-            const side = (X(pb[0]) - X(0)) * nx + (Y(pb[1]) - Y(0)) * ny
-            if (side > 0) { nx = -nx; ny = -ny }
-            const off = 7
-            return (
-              <g stroke={C.accent} strokeWidth={3} strokeLinecap="round">
-                <line x1={X(0) + nx * off} y1={Y(0) + ny * off} x2={X(proj[0]) + nx * off} y2={Y(proj[1]) + ny * off} />
-                <line x1={X(proj[0])} y1={Y(proj[1])} x2={X(proj[0]) + nx * off} y2={Y(proj[1]) + ny * off} strokeWidth={1} />
-              </g>
-            )
-          })()}
-        </>
-      )}
+      <g stroke={C.axis} strokeWidth={1}>
+        <line x1={0} x2={W} y1={Y(0)} y2={Y(0)} />
+        <line x1={X(0)} x2={X(0)} y1={0} y2={H} />
+      </g>
+      {/* recta de a extendida */}
+      <line x1={X(-pa[0] * 3)} y1={Y(-pa[1] * 3)} x2={X(pa[0] * 3)} y2={Y(pa[1] * 3)} stroke={C.a} strokeOpacity={0.15} />
+      <line x1={X(pb[0])} y1={Y(pb[1])} x2={X(proj[0])} y2={Y(proj[1])} stroke={C.text} strokeDasharray="4 3" />
+      {(() => {
+        // la sombra se dibuja desplazada del lado opuesto a b para que no la tape a
+        const ux = X(pa[0]) - X(0), uy = Y(pa[1]) - Y(0)
+        const len = Math.hypot(ux, uy) || 1
+        let nx = -uy / len, ny = ux / len
+        const side = (X(pb[0]) - X(0)) * nx + (Y(pb[1]) - Y(0)) * ny
+        if (side > 0) { nx = -nx; ny = -ny }
+        const off = 7
+        return (
+          <g stroke={C.accent} strokeWidth={3} strokeLinecap="round">
+            <line x1={X(0) + nx * off} y1={Y(0) + ny * off} x2={X(proj[0]) + nx * off} y2={Y(proj[1]) + ny * off} />
+            <line x1={X(proj[0])} y1={Y(proj[1])} x2={X(proj[0]) + nx * off} y2={Y(proj[1]) + ny * off} strokeWidth={1} />
+          </g>
+        )
+      })()}
       {deg > 1 && deg < 179 && (
         <>
           <path

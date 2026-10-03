@@ -117,7 +117,9 @@ const productoPunto: Formula = {
           { tone: 'info', text: `Si $\\vec a$ fuera una fuerza y $\\vec b$ un desplazamiento, el trabajo realizado sería $W = ${fmt(r.dot)}$.` },
         ]
       },
-      visual: (v) => ({ type: 'vectors', mode: 'dot', a: vec(v, 'a'), b: vec(v, 'b') }),
+      visual: (v) => vec(v, 'a').length === 3
+        ? { type: 'vectors3d', mode: 'dot', a: vec(v, 'a'), b: vec(v, 'b') }
+        : { type: 'vectors', a: vec(v, 'a'), b: vec(v, 'b') },
     }),
     calc<{ dot: number; cos: number }>({
       id: 'angulo',
@@ -147,7 +149,7 @@ const productoPunto: Formula = {
       },
       visual: (v) => {
         const t = toRad(num(v, 'theta'))
-        return { type: 'vectors', mode: 'dot', a: [num(v, 'ma'), 0], b: [num(v, 'mb') * Math.cos(t), num(v, 'mb') * Math.sin(t)] }
+        return { type: 'vectors', a: [num(v, 'ma'), 0], b: [num(v, 'mb') * Math.cos(t), num(v, 'mb') * Math.sin(t)] }
       },
     }),
   ],
@@ -206,8 +208,8 @@ const productoCruz: Formula = {
       id: 'cruz',
       label: 'Calcular a × b',
       inputs: [
-        { kind: 'vector', id: 'a', label: 'Vector a', symbol: L`\vec a`, default: [2, 1, 0], fixedDims: 3 },
-        { kind: 'vector', id: 'b', label: 'Vector b', symbol: L`\vec b`, default: [1, 3, 0], fixedDims: 3 },
+        { kind: 'vector', id: 'a', label: 'Vector a', symbol: L`\vec a`, default: [2, 0, 1], fixedDims: 3 },
+        { kind: 'vector', id: 'b', label: 'Vector b', symbol: L`\vec b`, default: [0, 3, 1], fixedDims: 3 },
       ],
       compute: (v) => {
         const [a1, a2, a3] = vec(v, 'a'), [b1, b2, b3] = vec(v, 'b')
@@ -243,7 +245,7 @@ const productoCruz: Formula = {
           { tone: 'info', text: 'Si inviertes el orden ($\\vec b\\times\\vec a$) obtienes el mismo vector con el signo opuesto: apunta hacia el otro lado del plano.' },
         ]
       },
-      visual: (v) => ({ type: 'vectors', mode: 'cross', a: vec(v, 'a'), b: vec(v, 'b') }),
+      visual: (v) => ({ type: 'vectors3d', mode: 'cross', a: vec(v, 'a'), b: vec(v, 'b') }),
     }),
   ],
   commonMistakes: [
@@ -328,6 +330,7 @@ const distancia: Formula = {
         }
         return out
       },
+      visual: (v) => ({ type: 'vectors3d', mode: 'points', a: vec(v, 'p1'), b: vec(v, 'p2'), view: vec(v, 'p1').length === 2 ? 'top' : undefined }),
     }),
   ],
   commonMistakes: [

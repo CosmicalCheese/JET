@@ -450,7 +450,7 @@ const trabajo: Formula = {
         const t = toRad(num(v, 'theta'))
         // sólo importa la dirección de F; la dibujamos con un largo comparable a d
         const len = Math.abs(num(v, 'd')) * 0.8 || 1
-        return { type: 'vectors', mode: 'dot', a: [num(v, 'd'), 0], b: [len * Math.cos(t), len * Math.sin(t)] }
+        return { type: 'vectors', a: [num(v, 'd'), 0], b: [len * Math.cos(t), len * Math.sin(t)] }
       },
     }),
   ],
