@@ -155,8 +155,6 @@ export interface Formula {
   id: string
   name: string
   category: CategoryId
-  /** Sección del Formulario de Ciencias Básicas ENECB 2026 */
-  ref?: string
   latex: string
   forms?: { label: string; latex: string }[]
   /** Una línea: qué calcula */

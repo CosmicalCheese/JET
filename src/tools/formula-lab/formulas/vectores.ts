@@ -26,7 +26,6 @@ const productoPunto: Formula = {
   id: 'producto-punto',
   name: 'Producto punto (producto escalar)',
   category: 'vectores',
-  ref: '1.6.5',
   latex: L`\vec a\cdot\vec b=a_1b_1+a_2b_2+a_3b_3=|\vec a|\,|\vec b|\cos\theta`,
   forms: [
     { label: 'Ángulo entre vectores', latex: L`\cos\theta=\frac{\vec a\cdot\vec b}{|\vec a|\,|\vec b|}` },
@@ -172,7 +171,6 @@ const productoCruz: Formula = {
   id: 'producto-cruz',
   name: 'Producto cruz (producto vectorial)',
   category: 'vectores',
-  ref: '1.6.5',
   latex: L`\vec a\times\vec b=\begin{vmatrix}\hat i&\hat j&\hat k\\a_1&a_2&a_3\\b_1&b_2&b_3\end{vmatrix}`,
   forms: [
     { label: 'Desarrollado', latex: L`(a_2b_3-a_3b_2)\,\hat i+(a_3b_1-a_1b_3)\,\hat j+(a_1b_2-a_2b_1)\,\hat k` },
@@ -265,7 +263,6 @@ const distancia: Formula = {
   id: 'distancia-puntos',
   name: 'Distancia entre dos puntos',
   category: 'vectores',
-  ref: '1.4',
   latex: L`d=\sqrt{(x_2-x_1)^2+(y_2-y_1)^2+(z_2-z_1)^2}`,
   forms: [
     { label: 'Vector que une P₁ y P₂', latex: L`\overrightarrow{P_1P_2}=[x_2-x_1,\ y_2-y_1,\ z_2-z_1]=[l,m,n]` },
@@ -386,7 +383,6 @@ const areaVectores: Formula = {
   id: 'area-vectores',
   name: 'Área entre vectores (paralelogramo y triángulo)',
   category: 'vectores',
-  ref: '1.6.5',
   latex: L`A=|\vec a\times\vec b|,\qquad A_{\triangle}=\tfrac12|\vec a\times\vec b|`,
   forms: [
     { label: 'En el plano (2D)', latex: L`A=|a_1b_2-a_2b_1|` },
@@ -476,7 +472,6 @@ const leyCosenos: Formula = {
   id: 'ley-de-cosenos',
   name: 'Ley de cosenos',
   category: 'geometria',
-  ref: '1.2',
   latex: L`c^2=a^2+b^2-2ab\cos C`,
   forms: [{ label: 'Para encontrar un ángulo', latex: L`\cos C=\frac{a^2+b^2-c^2}{2ab}` }],
   summary: 'Relaciona los tres lados de cualquier triángulo con uno de sus ángulos. Es Pitágoras generalizado.',

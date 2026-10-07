@@ -7,7 +7,7 @@ import {
 import { cn } from '../../lib/utils'
 import { Button } from '../../components/ui/Button'
 import { AREAS, CATEGORIES, getCategory, getFormula, searchFormulas } from './formulas'
-import type { Calculator, CategoryId, Formula, InputDef, Interpretation, Values } from './types'
+import type { AreaId, Calculator, CategoryId, Formula, InputDef, Interpretation, Values } from './types'
 import { Rich, Tex } from './Tex'
 import { Visual } from './visuals'
 import { Glossary } from './GlossaryPage'
@@ -29,12 +29,18 @@ export function FormulaLabPage() {
 
 function Catalog({ notFound }: { notFound?: string }) {
   const [query, setQuery] = useState('')
+  const [area, setArea] = useState<AreaId | 'all'>('all')
   const [cat, setCat] = useState<CategoryId | 'all'>('all')
 
-  const results = useMemo(() => {
-    const found = searchFormulas(query)
-    return cat === 'all' ? found : found.filter(f => f.category === cat)
-  }, [query, cat])
+  // Dos niveles: primero el área y, dentro de ella, la categoría
+  const found = useMemo(() => searchFormulas(query), [query])
+  const results = useMemo(() => found.filter(f => {
+    if (cat !== 'all') return f.category === cat
+    return area === 'all' || getCategory(f.category).area === area
+  }), [found, area, cat])
+  const areaCats = area === 'all' ? [] : CATEGORIES.filter(c => c.area === area)
+  const countIn = (pred: (c: CategoryId) => boolean) => found.filter(f => pred(f.category)).length
+  const pickArea = (a: AreaId | 'all') => { setArea(a); setCat('all') }
 
   return (
     <div className="space-y-6">
@@ -70,11 +76,19 @@ function Catalog({ notFound }: { notFound?: string }) {
         </Link>
         </div>
         <div className="flex flex-wrap gap-1.5">
-          <Chip active={cat === 'all'} onClick={() => setCat('all')}>Todas</Chip>
-          {CATEGORIES.map(c => (
-            <Chip key={c.id} active={cat === c.id} onClick={() => setCat(c.id)}>{c.label}</Chip>
+          <Chip active={area === 'all'} onClick={() => pickArea('all')} count={found.length}>Todas</Chip>
+          {AREAS.map(a => (
+            <Chip key={a.id} active={area === a.id} onClick={() => pickArea(a.id)} count={countIn(c => getCategory(c).area === a.id)}>{a.label}</Chip>
           ))}
         </div>
+        {areaCats.length > 1 && (
+          <div className="flex flex-wrap gap-1.5 pl-3 border-l-2 border-blue-100">
+            <Chip size="sm" active={cat === 'all'} onClick={() => setCat('all')}>Todo {AREAS.find(a => a.id === area)?.label.toLowerCase()}</Chip>
+            {areaCats.map(c => (
+              <Chip key={c.id} size="sm" active={cat === c.id} onClick={() => setCat(c.id)} count={countIn(x => x === c.id)}>{c.label}</Chip>
+            ))}
+          </div>
+        )}
       </div>
 
       {results.length === 0 && <p className="text-sm text-zinc-500">Ninguna fórmula coincide con tu búsqueda.</p>}
@@ -100,16 +114,19 @@ function Catalog({ notFound }: { notFound?: string }) {
   )
 }
 
-function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+function Chip({ active, onClick, children, count, size = 'md' }: { active: boolean; onClick: () => void; children: React.ReactNode; count?: number; size?: 'sm' | 'md' }) {
   return (
     <button
       onClick={onClick}
+      disabled={count === 0 && !active}
       className={cn(
-        'px-2.5 py-1 rounded-full text-xs font-medium border transition-colors',
-        active ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-zinc-200 text-zinc-600 hover:border-zinc-300 hover:text-zinc-900',
+        'inline-flex items-center gap-1.5 rounded-full font-medium border transition-colors disabled:opacity-40 disabled:cursor-default',
+        size === 'md' ? 'px-3 py-1.5 text-xs' : 'px-2.5 py-1 text-[11px]',
+        active ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-zinc-200 text-zinc-600 enabled:hover:border-zinc-300 enabled:hover:text-zinc-900',
       )}
     >
       {children}
+      {count !== undefined && <span className={cn('tabular-nums', active ? 'text-blue-100' : 'text-zinc-400')}>{count}</span>}
     </button>
   )
 }
@@ -127,9 +144,8 @@ function FormulaCard({ formula }: { formula: Formula }) {
       <div className="text-zinc-800 overflow-hidden whitespace-nowrap [mask-image:linear-gradient(to_right,black_85%,transparent)]">
         <Tex latex={formula.latex} />
       </div>
-      <p className="text-xs text-zinc-500 leading-relaxed line-clamp-2">{formula.summary}</p>
+      <p className="text-xs text-zinc-500 leading-relaxed line-clamp-2"><Rich text={formula.summary} /></p>
       <div className="flex items-center gap-2 mt-auto pt-1">
-        {formula.ref && <span className="text-[10px] font-mono text-zinc-400">§{formula.ref}</span>}
         {formula.toolLink && (
           <span className="inline-flex items-center gap-1 text-[10px] font-medium text-blue-600 bg-blue-50 rounded px-1.5 py-0.5">
             <Wrench size={9} /> {formula.toolLink.label}
@@ -175,11 +191,6 @@ function Detail({ formula }: { formula: Formula }) {
             >
               <Wrench size={12} /> Abrir {formula.toolLink.label}
             </Link>
-          )}
-          {formula.ref && (
-            <span className="text-xs text-zinc-500 bg-zinc-50 border border-zinc-200 rounded-lg px-2.5 py-1.5">
-              Formulario §{formula.ref}
-            </span>
           )}
         </div>
       </div>

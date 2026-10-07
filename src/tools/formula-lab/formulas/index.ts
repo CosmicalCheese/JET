@@ -21,7 +21,7 @@ export const CATEGORIES: Category[] = [
   { id: 'algebra', area: 'matematicas', label: 'Álgebra', description: 'Productos notables, exponentes, logaritmos y fracciones' },
   { id: 'trigonometria', area: 'matematicas', label: 'Trigonometría', description: 'Razones e identidades trigonométricas' },
   { id: 'vectores', area: 'matematicas', label: 'Vectores', description: 'Producto punto, producto cruz, distancias' },
-  { id: 'geometria', area: 'matematicas', label: 'Geometría y trigonometría', description: 'Triángulos y ángulos' },
+  { id: 'geometria', area: 'matematicas', label: 'Geometría', description: 'Triángulos y distancias' },
   { id: 'derivadas', area: 'calculo', label: 'Derivadas', description: 'Reglas de derivación y derivadas de funciones' },
   { id: 'integrales', area: 'calculo', label: 'Integrales', description: 'Formulario de integración' },
   { id: 'aplicaciones-integral', area: 'calculo', label: 'Aplicaciones de la integral', description: 'Áreas, longitudes y volúmenes' },
