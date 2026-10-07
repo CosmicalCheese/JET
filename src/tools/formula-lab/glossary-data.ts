@@ -5,7 +5,7 @@
 
 import type { Formula } from './types'
 
-export type GlossaryGroup = 'notacion' | 'vectores' | 'estadistica' | 'griegas' | 'quimica' | 'unidades'
+export type GlossaryGroup = 'notacion' | 'calculo' | 'vectores' | 'estadistica' | 'griegas' | 'quimica' | 'unidades'
 
 export interface GlossaryEntry {
   id: string
@@ -21,6 +21,7 @@ export interface GlossaryEntry {
 
 export const GLOSSARY_GROUPS: { id: GlossaryGroup; label: string; description: string }[] = [
   { id: 'notacion', label: 'Notación y operaciones', description: 'Los signos que aparecen en casi todas las fórmulas' },
+  { id: 'calculo', label: 'Cálculo y funciones', description: 'Derivadas, integrales, logaritmos y funciones trigonométricas' },
   { id: 'vectores', label: 'Vectores', description: 'Flechas, magnitudes y productos entre vectores' },
   { id: 'estadistica', label: 'Probabilidad y estadística', description: 'Medias, desviaciones y probabilidades' },
   { id: 'griegas', label: 'Letras griegas en física', description: 'Qué representa cada letra en las fórmulas de física' },
@@ -45,9 +46,22 @@ export const GLOSSARY: GlossaryEntry[] = [
   { id: 'tiende', group: 'notacion', symbol: 'n\\to\\infty', name: 'Tiende a (límite)', read: '“n tiende a infinito”', meaning: 'Describe qué pasa cuando una cantidad se hace cada vez más grande (o se acerca a un valor), sin llegar nunca a él.', match: /\\to|\\infty/ },
   { id: 'pi', group: 'notacion', symbol: '\\pi', name: 'Pi', meaning: 'La razón entre el perímetro y el diámetro de cualquier círculo: $\\pi \\approx 3.14159$.', match: /\\pi/ },
   { id: 'euler', group: 'notacion', symbol: 'e', name: 'Número de Euler', meaning: 'Constante $e \\approx 2.71828$, base del crecimiento y decaimiento exponencial. Aparece al pasar de muchos intentos pequeños a un proceso continuo.', example: 'e^{-3}\\approx0.0498', match: /e\^/ },
-  { id: 'trig', group: 'notacion', symbol: '\\sin,\\ \\cos,\\ \\tan', name: 'Funciones trigonométricas', read: '“seno, coseno, tangente”', meaning: 'Relacionan un ángulo con las proporciones de un triángulo rectángulo. En el formulario el seno se escribe **sen**. Revisa si tu calculadora está en grados o radianes.', example: '\\cos60^\\circ=0.5', match: /\\sin|\\cos|\\tan/ },
+  { id: 'trig', group: 'notacion', symbol: '\\sin,\\ \\cos,\\ \\tan', name: 'Funciones trigonométricas', read: '“seno, coseno, tangente”', meaning: 'Relacionan un ángulo con las proporciones de un triángulo rectángulo. En el formulario el seno se escribe **sen**. Revisa si tu calculadora está en grados o radianes.', example: '\\cos60^\\circ=0.5', match: /\\sin|\\cos|\\tan|\\operatorname\{sen\}/ },
   { id: 'trig-inversa', group: 'notacion', symbol: '\\cos^{-1}', name: 'Función trigonométrica inversa', read: '“arco coseno”', meaning: 'Hace el camino contrario: dado un valor, devuelve **el ángulo**. $\\cos^{-1}(0.5) = 60^\\circ$. El $-1$ **no** es un exponente.', match: /\\(sin|cos|tan)\^\{-1\}/ },
   { id: 'parcial', group: 'notacion', symbol: '\\frac{\\partial S}{\\partial b}', name: 'Derivada parcial', meaning: 'Cuánto cambia $S$ cuando sólo cambia $b$ y todo lo demás queda fijo. Igualarla a 0 sirve para encontrar mínimos o máximos.', match: /\\partial/ },
+
+  // ─── Cálculo ───────────────────────────────────────────────────────────────
+  { id: 'derivada', group: 'calculo', symbol: '\\frac{d}{dx},\\ y\'', name: 'Derivada', read: '“derivada de y respecto de x”, “y prima”', meaning: 'Qué tan rápido cambia una función: la **pendiente** de su recta tangente en cada punto. $\\frac{dy}{dx}$, $y\'$ y $f\'(x)$ significan lo mismo.', example: '\\frac{d}{dx}(x^2)=2x', match: /\\frac\{d\}\{d[xu]\}|y'|f'/ },
+  { id: 'prima', group: 'calculo', symbol: "u'", name: 'Derivada de una función interna', read: '“u prima”', meaning: 'Cuando la fórmula está escrita con $u$, hay que multiplicar por la derivada de $u$ (**regla de la cadena**). Si $u = 3x$, entonces $u\' = 3$.', match: /u'/ },
+  { id: 'integral', group: 'calculo', symbol: '\\int f(x)\\,dx', name: 'Integral (antiderivada)', read: '“integral de f de x de x”', meaning: 'La función cuya derivada es $f(x)$. El $dx$ dice cuál es la variable. Sin límites, el resultado lleva $+C$.', example: '\\int 2x\\,dx=x^2+C', match: /\\int/ },
+  { id: 'integral-definida', group: 'calculo', symbol: '\\int_a^b', name: 'Integral definida', read: '“integral de a a b”', meaning: 'Un **número**: el área con signo bajo la curva entre $x=a$ y $x=b$. Se calcula como $F(b)-F(a)$.', example: '\\int_0^2 2x\\,dx=4', match: /\\int_/ },
+  { id: 'constante-C', group: 'calculo', symbol: '+C', name: 'Constante de integración', meaning: 'Cualquier número. Se agrega porque la derivada de una constante es 0: $x^2$, $x^2+5$ y $x^2-1$ tienen la misma derivada.', match: /\+C/ },
+  { id: 'ln', group: 'calculo', symbol: '\\ln x', name: 'Logaritmo natural', read: '“logaritmo natural de x”', meaning: 'El exponente al que hay que elevar $e\\approx2.718$ para obtener $x$. Sólo existe para $x>0$.', example: '\\ln e^3=3', match: /\\ln/ },
+  { id: 'log', group: 'calculo', symbol: '\\log x', name: 'Logaritmo base 10', meaning: 'El exponente al que hay que elevar 10 para obtener $x$. Es el botón “log” de la calculadora.', example: '\\log1000=3', match: /\\log/ },
+  { id: 'reciprocas', group: 'calculo', symbol: '\\sec,\\ \\csc,\\ \\cot', name: 'Secante, cosecante y cotangente', meaning: 'Las recíprocas: $\\sec x=\\frac{1}{\\cos x}$, $\\csc x=\\frac{1}{\\operatorname{sen}x}$, $\\cot x=\\frac{1}{\\tan x}$.', match: /\\sec|\\csc|\\cot/ },
+  { id: 'arco', group: 'calculo', symbol: '\\operatorname{arcsen}x', name: 'Funciones arco (inversas)', read: '“arco seno de x”', meaning: 'Devuelven **el ángulo** (en radianes) cuyo seno, tangente, etc. es $x$. $\\operatorname{arcsen}x$ es lo mismo que $\\operatorname{sen}^{-1}x$.', example: '\\arctan1=\\frac{\\pi}{4}', match: /arcsen|\\arccos|\\arctan|arcsec|arccot|arccsc/ },
+  { id: 'raiz-n', group: 'calculo', symbol: '\\sqrt[n]{a}', name: 'Raíz n-ésima', read: '“raíz enésima de a”', meaning: 'El número que elevado a la $n$ da $a$. Equivale a un exponente fraccionario: $\\sqrt[n]{a}=a^{1/n}$.', example: '\\sqrt[3]{8}=2', match: /\\sqrt\[/ },
+  { id: 'limite', group: 'calculo', symbol: '\\lim_{h\\to0}', name: 'Límite', read: '“límite cuando h tiende a cero”', meaning: 'El valor al que se acerca una expresión cuando $h$ se hace cada vez más pequeño, sin llegar a 0. La derivada se define con un límite.', match: /\\lim/ },
 
   // ─── Vectores ──────────────────────────────────────────────────────────────
   { id: 'vector', group: 'vectores', symbol: '\\vec a', name: 'Vector', read: '“vector a”', meaning: 'Una cantidad con **magnitud y dirección** (una flecha), como una fuerza o una velocidad. Sin flecha, $a$ es sólo un número.', match: /\\vec/ },

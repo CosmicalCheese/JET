@@ -42,7 +42,7 @@ function Catalog({ notFound }: { notFound?: string }) {
         <h2 className="text-2xl font-bold text-zinc-900">Formula Lab</h2>
         <p className="text-sm text-zinc-500 mt-2 max-w-2xl">
           No sólo calcula: explica qué significa cada fórmula, de dónde sale y qué te dice el resultado.
-          Basado en el Formulario de Ciencias Básicas ENECB 2026.
+          Basado en el Formulario de Ciencias Básicas ENECB 2026 y en el formulario de derivadas e integrales.
         </p>
       </div>
 
@@ -59,7 +59,7 @@ function Catalog({ notFound }: { notFound?: string }) {
           <input
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Buscar: producto punto, binomial, presión…"
+            placeholder="Buscar: producto punto, integral, binomial, presión…"
             className="w-full rounded-lg border border-zinc-200 bg-white pl-9 pr-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
           />
         </div>

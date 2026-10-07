@@ -7,11 +7,16 @@
  * Todo texto admite LaTeX inline entre $…$ y **negritas**.
  */
 
-export type AreaId = 'matematicas' | 'estadistica' | 'fisica' | 'quimica'
+export type AreaId = 'matematicas' | 'calculo' | 'estadistica' | 'fisica' | 'quimica'
 
 export type CategoryId =
+  | 'algebra'
+  | 'trigonometria'
   | 'vectores'
   | 'geometria'
+  | 'derivadas'
+  | 'integrales'
+  | 'aplicaciones-integral'
   | 'probabilidad'
   | 'estadistica'
   | 'mecanica'
@@ -85,6 +90,13 @@ export interface Interpretation {
   text: string
 }
 
+export type PlotTone = 'a' | 'b' | 'accent' | 'warn' | 'muted'
+export interface PlotCurve { points: [number, number][]; tone: PlotTone; label?: string; dashed?: boolean }
+/** Región entre dos poligonales con las mismas x (la de arriba y la de abajo) */
+export interface PlotArea { upper: [number, number][]; lower: [number, number][]; tone: PlotTone; label?: string }
+export interface PlotSegment { from: [number, number]; to: [number, number]; tone: PlotTone; label?: string; dashed?: boolean }
+export interface PlotMark { x: number; y: number; tone?: PlotTone; label?: string }
+
 export type VisualSpec =
   | { type: 'vectors'; a: number[]; b: number[] }
   /** Escena 3D que se gira arrastrando; view 'top' arranca viendo el plano xy (útil para datos 2D) */
@@ -97,6 +109,18 @@ export type VisualSpec =
   | { type: 'bars'; xs: number[]; ps: number[]; highlight: number }
   | { type: 'snell'; n1: number; n2: number; theta1: number; theta2: number | null }
   | { type: 'motion'; x0: number; v0: number; a: number; t: number }
+  /** Plano cartesiano genérico: funciones, áreas, segmentos y puntos. `equal` no deforma (círculos, triángulos) */
+  | {
+    type: 'plot'
+    curves?: PlotCurve[]
+    areas?: PlotArea[]
+    segments?: PlotSegment[]
+    marks?: PlotMark[]
+    xRange?: [number, number]
+    yRange?: [number, number]
+    equal?: boolean
+    caption?: string
+  }
 
 /**
  * Una forma de usar la fórmula (p. ej. "despejar V", "despejar R").
@@ -115,7 +139,7 @@ export interface Calculator<R = unknown> {
   answer: (v: Values, r: R) => string
   extras?: (v: Values, r: R) => { label: string; latex: string }[]
   interpret: (v: Values, r: R) => Interpretation[]
-  visual?: (v: Values, r: R) => VisualSpec
+  visual?: (v: Values, r: R) => VisualSpec | undefined
   /** Enlace a la herramienta de JET con estos datos precargados */
   tryInTool?: (v: Values, r: R) => { path: string; label: string; prefill?: () => void }
 }

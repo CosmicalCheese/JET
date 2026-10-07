@@ -4,17 +4,27 @@ import { PROBABILIDAD } from './probabilidad'
 import { VECTORES } from './vectores'
 import { FISICA } from './fisica'
 import { QUIMICA } from './quimica'
+import { ALGEBRA } from './algebra'
+import { TRIGONOMETRIA } from './trigonometria'
+import { DERIVADAS } from './derivadas'
+import { INTEGRALES } from './integrales'
 
 export const AREAS: { id: AreaId; label: string }[] = [
   { id: 'matematicas', label: 'Matemáticas' },
+  { id: 'calculo', label: 'Cálculo' },
   { id: 'estadistica', label: 'Probabilidad y estadística' },
   { id: 'fisica', label: 'Física' },
   { id: 'quimica', label: 'Química' },
 ]
 
 export const CATEGORIES: Category[] = [
+  { id: 'algebra', area: 'matematicas', label: 'Álgebra', description: 'Productos notables, exponentes, logaritmos y fracciones' },
+  { id: 'trigonometria', area: 'matematicas', label: 'Trigonometría', description: 'Razones e identidades trigonométricas' },
   { id: 'vectores', area: 'matematicas', label: 'Vectores', description: 'Producto punto, producto cruz, distancias' },
   { id: 'geometria', area: 'matematicas', label: 'Geometría y trigonometría', description: 'Triángulos y ángulos' },
+  { id: 'derivadas', area: 'calculo', label: 'Derivadas', description: 'Reglas de derivación y derivadas de funciones' },
+  { id: 'integrales', area: 'calculo', label: 'Integrales', description: 'Formulario de integración' },
+  { id: 'aplicaciones-integral', area: 'calculo', label: 'Aplicaciones de la integral', description: 'Áreas, longitudes y volúmenes' },
   { id: 'probabilidad', area: 'estadistica', label: 'Probabilidad', description: 'Conteo y distribuciones discretas' },
   { id: 'estadistica', area: 'estadistica', label: 'Estadística', description: 'Descriptiva, inferencia y regresión' },
   { id: 'mecanica', area: 'fisica', label: 'Cinemática y dinámica', description: 'Movimiento y fuerzas' },
@@ -29,7 +39,10 @@ export const CATEGORIES: Category[] = [
   { id: 'termoquimica', area: 'quimica', label: 'Termoquímica y ácido-base', description: 'Entalpía, presión de vapor y pH' },
 ]
 
-export const FORMULAS: Formula[] = [...VECTORES, ...PROBABILIDAD, ...ESTADISTICA, ...FISICA, ...QUIMICA]
+export const FORMULAS: Formula[] = [
+  ...ALGEBRA, ...TRIGONOMETRIA, ...VECTORES, ...DERIVADAS, ...INTEGRALES,
+  ...PROBABILIDAD, ...ESTADISTICA, ...FISICA, ...QUIMICA,
+]
 
 const byId = new Map(FORMULAS.map(f => [f.id, f]))
 

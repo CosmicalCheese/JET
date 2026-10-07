@@ -4,6 +4,7 @@ import { fmt, normalCDF, round, toRad } from './format'
 import { Tex } from './Tex'
 import { Vectors3DVisual } from './visuals3d'
 import { LevelsVisual, PhVisual, SpectrumVisual } from './visuals-chem'
+import { PlotVisual } from './visuals-plot'
 
 const W = 360
 const H = 240
@@ -33,6 +34,7 @@ export function Visual({ spec }: { spec: VisualSpec }) {
     case 'spectrum': return <SpectrumVisual {...spec} />
     case 'levels': return <LevelsVisual {...spec} />
     case 'ph': return <PhVisual {...spec} />
+    case 'plot': return <PlotVisual {...spec} />
   }
 }
 
