@@ -42,7 +42,6 @@ function Catalog({ notFound }: { notFound?: string }) {
         <h2 className="text-2xl font-bold text-zinc-900">Formula Lab</h2>
         <p className="text-sm text-zinc-500 mt-2 max-w-2xl">
           No sólo calcula: explica qué significa cada fórmula, de dónde sale y qué te dice el resultado.
-          Basado en el Formulario de Ciencias Básicas ENECB 2026 y en el formulario de derivadas e integrales.
         </p>
       </div>
 
