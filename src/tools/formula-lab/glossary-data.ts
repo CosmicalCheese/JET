@@ -5,7 +5,7 @@
 
 import type { Formula } from './types'
 
-export type GlossaryGroup = 'notacion' | 'calculo' | 'vectores' | 'estadistica' | 'griegas' | 'quimica' | 'unidades'
+export type GlossaryGroup = 'notacion' | 'calculo' | 'vectores' | 'estadistica' | 'griegas' | 'quimica' | 'operaciones' | 'unidades'
 
 export interface GlossaryEntry {
   id: string
@@ -26,6 +26,7 @@ export const GLOSSARY_GROUPS: { id: GlossaryGroup; label: string; description: s
   { id: 'estadistica', label: 'Probabilidad y estadística', description: 'Medias, desviaciones y probabilidades' },
   { id: 'griegas', label: 'Letras griegas en física', description: 'Qué representa cada letra en las fórmulas de física' },
   { id: 'quimica', label: 'Química', description: 'Concentraciones, electroquímica y estructura atómica' },
+  { id: 'operaciones', label: 'Investigación de operaciones', description: 'Programación lineal, inventarios, colas y decisiones' },
   { id: 'unidades', label: 'Unidades y prefijos', description: 'Qué significa cada unidad del Sistema Internacional' },
 ]
 
@@ -44,7 +45,7 @@ export const GLOSSARY: GlossaryEntry[] = [
   { id: 'aprox', group: 'notacion', symbol: '\\approx', name: 'Aproximadamente igual', meaning: 'Los valores son casi iguales; normalmente porque se redondeó.', example: '\\pi\\approx3.1416', match: /\\approx/ },
   { id: 'implica', group: 'notacion', symbol: '\\Rightarrow', name: 'Implica', read: '“entonces”', meaning: 'Lo de la izquierda lleva a lo de la derecha. Se usa al despejar o deducir.', match: /\\Rightarrow/ },
   { id: 'tiende', group: 'notacion', symbol: 'n\\to\\infty', name: 'Tiende a (límite)', read: '“n tiende a infinito”', meaning: 'Describe qué pasa cuando una cantidad se hace cada vez más grande (o se acerca a un valor), sin llegar nunca a él.', match: /\\to|\\infty/ },
-  { id: 'pi', group: 'notacion', symbol: '\\pi', name: 'Pi', meaning: 'La razón entre el perímetro y el diámetro de cualquier círculo: $\\pi \\approx 3.14159$.', match: /\\pi/ },
+  { id: 'pi', group: 'notacion', symbol: '\\pi', name: 'Pi', meaning: 'La razón entre el perímetro y el diámetro de cualquier círculo: $\\pi \\approx 3.14159$. En **cadenas de Markov**, $\\pi$ es otra cosa: el vector de probabilidades estables.', match: /\\pi/ },
   { id: 'euler', group: 'notacion', symbol: 'e', name: 'Número de Euler', meaning: 'Constante $e \\approx 2.71828$, base del crecimiento y decaimiento exponencial. Aparece al pasar de muchos intentos pequeños a un proceso continuo.', example: 'e^{-3}\\approx0.0498', match: /e\^/ },
   { id: 'trig', group: 'notacion', symbol: '\\sin,\\ \\cos,\\ \\tan', name: 'Funciones trigonométricas', read: '“seno, coseno, tangente”', meaning: 'Relacionan un ángulo con las proporciones de un triángulo rectángulo. En el formulario el seno se escribe **sen**. Revisa si tu calculadora está en grados o radianes.', example: '\\cos60^\\circ=0.5', match: /\\sin|\\cos|\\tan|\\operatorname\{sen\}/ },
   { id: 'trig-inversa', group: 'notacion', symbol: '\\cos^{-1}', name: 'Función trigonométrica inversa', read: '“arco coseno”', meaning: 'Hace el camino contrario: dado un valor, devuelve **el ángulo**. $\\cos^{-1}(0.5) = 60^\\circ$. El $-1$ **no** es un exponente.', match: /\\(sin|cos|tan)\^\{-1\}/ },
@@ -74,7 +75,7 @@ export const GLOSSARY: GlossaryEntry[] = [
 
   // ─── Estadística ───────────────────────────────────────────────────────────
   { id: 'media-muestral', group: 'estadistica', symbol: '\\bar x', name: 'Media muestral', read: '“x barra”', meaning: 'El promedio de los datos de una **muestra**.', match: /\\bar x/ },
-  { id: 'mu', group: 'estadistica', symbol: '\\mu', name: 'Media poblacional', read: '“mu”', meaning: 'El promedio de **toda la población**, o el valor esperado de una distribución. Ojo: en unidades, $\\mu$ es el prefijo micro ($10^{-6}$), como en $\\mu\\mathrm{C}$; y en química, el momento magnético.', match: /\\mu/ },
+  { id: 'mu', group: 'estadistica', symbol: '\\mu', name: 'Media poblacional', read: '“mu”', meaning: 'El promedio de **toda la población**, o el valor esperado de una distribución. Ojo: en unidades, $\\mu$ es el prefijo micro ($10^{-6}$), como en $\\mu\\mathrm{C}$; en química, el momento magnético; y en **colas**, la tasa de servicio (clientes atendidos por unidad de tiempo).', match: /\\mu/ },
   { id: 'sigma', group: 'estadistica', symbol: '\\sigma', name: 'Desviación estándar poblacional', read: '“sigma”', meaning: 'Qué tan dispersos están los datos de toda la población alrededor de $\\mu$. $\\sigma^2$ es la **varianza**.', match: /\\sigma/ },
   { id: 's', group: 'estadistica', symbol: 's', name: 'Desviación estándar muestral', meaning: 'La dispersión calculada con los datos de una **muestra** (dividiendo entre $n-1$).' },
   { id: 'n', group: 'estadistica', symbol: 'n,\\ N', name: 'Tamaño de muestra y de población', meaning: '$n$ es cuántos datos tiene la muestra; $N$, cuántos elementos tiene la población completa.' },
@@ -91,8 +92,8 @@ export const GLOSSARY: GlossaryEntry[] = [
 
   // ─── Griegas en física ─────────────────────────────────────────────────────
   { id: 'theta', group: 'griegas', symbol: '\\theta', name: 'Theta: ángulo', read: '“teta”', meaning: 'Casi siempre representa un **ángulo**: entre dos vectores, de incidencia de la luz, de inclinación.', match: /\\theta/ },
-  { id: 'lambda', group: 'griegas', symbol: '\\lambda', name: 'Lambda: longitud de onda', read: '“lambda”', meaning: 'Distancia entre dos crestas de una onda. En Poisson, $\\lambda$ también se usa como tasa promedio de eventos.', match: /\\lambda/ },
-  { id: 'rho', group: 'griegas', symbol: '\\rho', name: 'Rho: densidad', read: '“ro”', meaning: 'Masa por unidad de volumen ($\\mathrm{kg/m^3}$); el agua tiene $\\rho = 1000$. En electricidad, $\\rho$ es la resistividad.', match: /\\rho/ },
+  { id: 'lambda', group: 'griegas', symbol: '\\lambda', name: 'Lambda: longitud de onda y tasa de llegadas', read: '“lambda”', meaning: 'Distancia entre dos crestas de una onda. En Poisson y en **teoría de colas**, $\\lambda$ es la tasa promedio de eventos o de llegadas (clientes por unidad de tiempo).', match: /\\lambda/ },
+  { id: 'rho', group: 'griegas', symbol: '\\rho', name: 'Rho: densidad y utilización', read: '“ro”', meaning: 'Masa por unidad de volumen ($\\mathrm{kg/m^3}$); el agua tiene $\\rho = 1000$. En electricidad, $\\rho$ es la resistividad y en **colas** la utilización del servidor, $\\rho=\\lambda/\\mu$.', match: /\\rho/ },
   { id: 'eta', group: 'griegas', symbol: '\\eta', name: 'Eta: eficiencia', read: '“eta”', meaning: 'Qué fracción de la energía que entra se aprovecha. Va de 0 a 1 (o de 0% a 100%).', match: /\\eta/ },
   { id: 'omega', group: 'griegas', symbol: '\\Omega', name: 'Omega mayúscula: ohm', read: '“ohm”', meaning: 'La unidad de resistencia eléctrica. $1\\ \\Omega = 1\\ \\mathrm{V/A}$.', match: /\\Omega|Ω/ },
   { id: 'epsilon', group: 'griegas', symbol: '\\epsilon_0', name: 'Épsilon cero: permitividad del vacío', read: '“épsilon cero”', meaning: 'Constante eléctrica, $\\epsilon_0 = 8.85\\times10^{-12}\\ \\mathrm{C^2/(N\\cdot m^2)}$. Se relaciona con la de Coulomb: $k = \\frac{1}{4\\pi\\epsilon_0}$.' },
@@ -109,6 +110,17 @@ export const GLOSSARY: GlossaryEntry[] = [
   { id: 'nu', group: 'quimica', symbol: '\\nu,\\ f', name: 'Nu: frecuencia', read: '“nu”', meaning: 'Oscilaciones por segundo (Hz). En química suele escribirse $\\nu$ y en física $f$.' },
   { id: 'ph-p', group: 'quimica', symbol: '\\text{pH}', name: 'pH (la “p” es −log)', meaning: '$\\text{pX} = -\\log X$. Convierte concentraciones diminutas en números cómodos: $[\\mathrm{H^+}] = 10^{-3}$ da pH 3.', match: /\\text\{pH\}/ },
   { id: 'ev', group: 'quimica', symbol: '\\mathrm{eV}', name: 'Electronvolt', meaning: 'La energía que gana un electrón al pasar por 1 V: $1\\ \\mathrm{eV} = 1.602\\times10^{-19}\\ \\mathrm{J}$. Cómoda para fotones y electrones.' },
+
+  // ─── Investigación de operaciones ──────────────────────────────────────────
+  { id: 'objetivo-Z', group: 'operaciones', symbol: '\\max Z,\\ \\min Z', name: 'Función objetivo', read: '“maximizar Z”', meaning: 'Lo que quieres hacer lo más grande (ganancia) o lo más pequeño (costo) posible. “s.a.” se lee “sujeto a”: las restricciones que debes respetar.', match: /\\max\\ Z|\\min\\ Z/ },
+  { id: 'holgura', group: 'operaciones', symbol: 's_i', name: 'Variable de holgura', meaning: 'Lo que **sobra** de un recurso. Convierte una desigualdad en igualdad: $a_1x_1+a_2x_2+s=b$. Con $s=0$ el recurso se agota.', match: /\+s_i/ },
+  { id: 'no-negatividad', group: 'operaciones', symbol: 'x_1,x_2\\ge0', name: 'No negatividad', meaning: 'Las cantidades de decisión (cuánto producir, comprar…) no pueden ser negativas. Limita el problema al primer cuadrante.', match: /x_1,\s?x_2\\ge0|x_1,x_2,s_i\\ge0/ },
+  { id: 'optimo-estrella', group: 'operaciones', symbol: 'Q^*,\\ Z^*,\\ x^*', name: 'Asterisco: valor óptimo', read: '“Q estrella”', meaning: 'El asterisco marca el valor **óptimo**: el que da el mejor resultado posible (la mejor cantidad de pedido, la mayor ganancia…).', match: /\^\*/ },
+  { id: 'medidas-cola', group: 'operaciones', symbol: 'L,\\ L_q,\\ W,\\ W_q', name: 'Medidas de una cola', meaning: '$L$ y $L_q$: clientes en promedio en el **sistema** (fila + servicio) y en la **fila**. $W$ y $W_q$: tiempo promedio en el sistema y sólo esperando. Se relacionan con la ley de Little: $L=\\lambda W$.', match: /L_q|W_q/ },
+  { id: 'prob-n', group: 'operaciones', symbol: 'P_n', name: 'Probabilidad de n clientes', meaning: 'Probabilidad de que haya exactamente $n$ clientes en el sistema en un momento cualquiera (en régimen estable). $P_0$ es la probabilidad de que esté vacío.', match: /P_n|P_0/ },
+  { id: 'tiempos-pert', group: 'operaciones', symbol: 't_e,\\ ES,\\ EF', name: 'Tiempos de proyecto', meaning: '$t_e$: duración esperada (PERT). $ES$ y $EF$: inicio y fin más tempranos de una actividad; $LS$ y $LF$: más tardíos sin retrasar el proyecto.', match: /t_e|ES_|LS_/ },
+  { id: 'emv', group: 'operaciones', symbol: 'EMV,\\ EVPI', name: 'Valor esperado y valor de la información perfecta', meaning: '$EMV$: valor monetario esperado de una alternativa. $EVPI$: cuánto aumentaría con información perfecta; es el **máximo** que valdría pagar por información.', match: /EMV|EVPI/ },
+  { id: 'demanda-inventario', group: 'operaciones', symbol: 'D,\\ S,\\ H', name: 'Demanda, costo de pedido y de mantener', meaning: '$D$: demanda anual. $S$: costo fijo de hacer un pedido. $H$: costo de mantener una unidad en inventario un año.', match: /\\frac\{2DS\}|\\frac\{D\}\{Q\}S|\\sqrt\{2DSH/ },
 
   // ─── Unidades ──────────────────────────────────────────────────────────────
   { id: 'newton', group: 'unidades', symbol: '\\mathrm{N}', name: 'Newton (fuerza)', meaning: 'La fuerza que acelera 1 kg a 1 m/s². $1\\ \\mathrm{N} = 1\\ \\mathrm{kg\\cdot m/s^2}$.' },

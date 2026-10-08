@@ -1,5 +1,5 @@
 import { useId } from 'react'
-import type { PlotArea, PlotCurve, PlotMark, PlotSegment, PlotTone } from './types'
+import type { PlotArea, PlotCurve, PlotMark, PlotPolygon, PlotSegment, PlotTone } from './types'
 import { fmt, round } from './format'
 import { Rich, Tex } from './Tex'
 
@@ -32,21 +32,25 @@ function niceTicks(min: number, max: number, count = 6): number[] {
 interface Props {
   curves?: PlotCurve[]
   areas?: PlotArea[]
+  polygons?: PlotPolygon[]
   segments?: PlotSegment[]
   marks?: PlotMark[]
+  hideXTicks?: boolean
+  hideYTicks?: boolean
   xRange?: [number, number]
   yRange?: [number, number]
   equal?: boolean
   caption?: string
 }
 
-export function PlotVisual({ curves = [], areas = [], segments = [], marks = [], xRange, yRange, equal, caption }: Props) {
+export function PlotVisual({ curves = [], areas = [], polygons = [], segments = [], marks = [], hideXTicks, hideYTicks, xRange, yRange, equal, caption }: Props) {
   const uid = useId().replace(/:/g, '')
 
   // ── Rango de los datos ──
   const pts: [number, number][] = [
     ...curves.flatMap(c => c.points),
     ...areas.flatMap(a => [...a.upper, ...a.lower]),
+    ...polygons.flatMap(p => p.points),
     ...segments.flatMap(s => [s.from, s.to]),
     ...marks.map(m => [m.x, m.y] as [number, number]),
   ].filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y))
@@ -99,6 +103,7 @@ export function PlotVisual({ curves = [], areas = [], segments = [], marks = [],
   const legend = [
     ...curves.filter(c => c.label).map(c => ({ label: c.label!, tone: c.tone, kind: c.dashed ? 'dash' : 'line' })),
     ...areas.filter(a => a.label).map(a => ({ label: a.label!, tone: a.tone, kind: 'area' })),
+    ...polygons.filter(p => p.label).map(p => ({ label: p.label!, tone: p.tone, kind: 'area' })),
   ]
 
   return (
@@ -114,13 +119,13 @@ export function PlotVisual({ curves = [], areas = [], segments = [], marks = [],
         {xt.map(t => (
           <g key={`x${t}`}>
             <line x1={X(t)} x2={X(t)} y1={oy} y2={oy + plotH} stroke={C.grid} />
-            <text x={X(t)} y={oy + plotH + 14} fontSize={10} fill={C.text} textAnchor="middle">{fmt(t, 2)}</text>
+            {!hideXTicks && <text x={X(t)} y={oy + plotH + 14} fontSize={10} fill={C.text} textAnchor="middle">{fmt(t, 2)}</text>}
           </g>
         ))}
         {yt.map(t => (
           <g key={`y${t}`}>
             <line x1={ox} x2={ox + plotW} y1={Y(t)} y2={Y(t)} stroke={C.grid} />
-            <text x={ox - 5} y={Y(t) + 3} fontSize={10} fill={C.text} textAnchor="end">{fmt(t, 2)}</text>
+            {!hideYTicks && <text x={ox - 5} y={Y(t) + 3} fontSize={10} fill={C.text} textAnchor="end">{fmt(t, 2)}</text>}
           </g>
         ))}
 
@@ -131,6 +136,9 @@ export function PlotVisual({ curves = [], areas = [], segments = [], marks = [],
 
           {areas.map((a, i) => (
             <polygon key={`a${i}`} points={polygon(a)} fill={TONE[a.tone]} fillOpacity={0.18} />
+          ))}
+          {polygons.map((p, i) => (
+            <polygon key={`p${i}`} points={p.points.map(([x, y]) => `${X(x).toFixed(2)},${Y(y).toFixed(2)}`).join(' ')} fill={TONE[p.tone]} fillOpacity={0.2} stroke={TONE[p.tone]} strokeOpacity={0.5} />
           ))}
           {curves.map((c, i) => (
             <path key={`c${i}`} d={path(c.points)} fill="none" stroke={TONE[c.tone]} strokeWidth={c.dashed ? 1.5 : 2.2} strokeDasharray={c.dashed ? '5 4' : undefined} strokeLinejoin="round" />

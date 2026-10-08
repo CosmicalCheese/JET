@@ -7,7 +7,7 @@
  * Todo texto admite LaTeX inline entre $…$ y **negritas**.
  */
 
-export type AreaId = 'matematicas' | 'calculo' | 'estadistica' | 'fisica' | 'quimica'
+export type AreaId = 'matematicas' | 'calculo' | 'estadistica' | 'fisica' | 'quimica' | 'operaciones'
 
 export type CategoryId =
   | 'algebra'
@@ -29,6 +29,12 @@ export type CategoryId =
   | 'atomica'
   | 'electroquimica'
   | 'termoquimica'
+  | 'programacion-lineal'
+  | 'inventarios'
+  | 'colas'
+  | 'proyectos'
+  | 'decisiones'
+  | 'markov'
 
 export interface Category {
   id: CategoryId
@@ -95,6 +101,8 @@ export interface PlotCurve { points: [number, number][]; tone: PlotTone; label?:
 /** Región entre dos poligonales con las mismas x (la de arriba y la de abajo) */
 export interface PlotArea { upper: [number, number][]; lower: [number, number][]; tone: PlotTone; label?: string }
 export interface PlotSegment { from: [number, number]; to: [number, number]; tone: PlotTone; label?: string; dashed?: boolean }
+/** Región cerrada (p. ej. la región factible de un problema de programación lineal) */
+export interface PlotPolygon { points: [number, number][]; tone: PlotTone; label?: string }
 export interface PlotMark { x: number; y: number; tone?: PlotTone; label?: string }
 
 export type VisualSpec =
@@ -114,8 +122,11 @@ export type VisualSpec =
     type: 'plot'
     curves?: PlotCurve[]
     areas?: PlotArea[]
+    polygons?: PlotPolygon[]
     segments?: PlotSegment[]
     marks?: PlotMark[]
+    hideXTicks?: boolean
+    hideYTicks?: boolean
     xRange?: [number, number]
     yRange?: [number, number]
     equal?: boolean

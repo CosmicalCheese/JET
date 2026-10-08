@@ -8,6 +8,12 @@ import { ALGEBRA } from './algebra'
 import { TRIGONOMETRIA } from './trigonometria'
 import { DERIVADAS } from './derivadas'
 import { INTEGRALES } from './integrales'
+import { PROGRAMACION_LINEAL } from './programacion-lineal'
+import { INVENTARIOS } from './inventarios'
+import { COLAS } from './colas'
+import { PROYECTOS } from './proyectos'
+import { DECISIONES } from './decisiones'
+import { MARKOV } from './markov'
 
 export const AREAS: { id: AreaId; label: string }[] = [
   { id: 'matematicas', label: 'Matemáticas' },
@@ -15,6 +21,7 @@ export const AREAS: { id: AreaId; label: string }[] = [
   { id: 'estadistica', label: 'Probabilidad y estadística' },
   { id: 'fisica', label: 'Física' },
   { id: 'quimica', label: 'Química' },
+  { id: 'operaciones', label: 'Investigación de operaciones' },
 ]
 
 export const CATEGORIES: Category[] = [
@@ -33,6 +40,12 @@ export const CATEGORIES: Category[] = [
   { id: 'termodinamica', area: 'fisica', label: 'Termodinámica', description: 'Calor, gases y máquinas térmicas' },
   { id: 'ondas', area: 'fisica', label: 'Ondas y óptica', description: 'Refracción y longitud de onda' },
   { id: 'fluidos', area: 'fisica', label: 'Mecánica de fluidos', description: 'Presión y flujo' },
+  { id: 'programacion-lineal', area: 'operaciones', label: 'Programación lineal', description: 'Método gráfico y símplex' },
+  { id: 'inventarios', area: 'operaciones', label: 'Inventarios', description: 'Cuánto y cuándo pedir' },
+  { id: 'colas', area: 'operaciones', label: 'Teoría de colas', description: 'Filas, esperas y servidores' },
+  { id: 'proyectos', area: 'operaciones', label: 'Proyectos (PERT/CPM)', description: 'Ruta crítica y plazos' },
+  { id: 'decisiones', area: 'operaciones', label: 'Decisiones y juegos', description: 'Incertidumbre, riesgo y competencia' },
+  { id: 'markov', area: 'operaciones', label: 'Cadenas de Markov', description: 'Estados y largo plazo' },
   { id: 'disoluciones', area: 'quimica', label: 'Disoluciones', description: 'Concentración y dilución' },
   { id: 'atomica', area: 'quimica', label: 'Estructura atómica', description: 'Fotones, espectros y cuántica' },
   { id: 'electroquimica', area: 'quimica', label: 'Electroquímica', description: 'Pilas, potenciales y electrólisis' },
@@ -42,6 +55,7 @@ export const CATEGORIES: Category[] = [
 export const FORMULAS: Formula[] = [
   ...ALGEBRA, ...TRIGONOMETRIA, ...VECTORES, ...DERIVADAS, ...INTEGRALES,
   ...PROBABILIDAD, ...ESTADISTICA, ...FISICA, ...QUIMICA,
+  ...PROGRAMACION_LINEAL, ...INVENTARIOS, ...COLAS, ...PROYECTOS, ...DECISIONES, ...MARKOV,
 ]
 
 const byId = new Map(FORMULAS.map(f => [f.id, f]))
