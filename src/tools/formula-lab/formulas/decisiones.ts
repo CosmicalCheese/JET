@@ -1,6 +1,7 @@
-import { calc, fail, list, num, type CalcStep, type Formula, type Values } from '../types'
+import { calc, fail, mat, num, type CalcStep, type Formula, type Values, type VisualSpec } from '../types'
 import { fmt } from '../format'
 import { L, barsSpec, matrixTex, toneAt } from './oi-comun'
+import { solveSimplex, type SCon } from './simplex'
 
 const TOL = 1e-9
 
@@ -9,13 +10,11 @@ const TOL = 1e-9
 interface Matrix { M: number[][]; m: number; n: number }
 
 function readMatrix(v: Values, pfx: string): Matrix {
-  const n = num(v, `${pfx}estados`)
-  if (!Number.isInteger(n) || n < 2 || n > 8) fail('El número de estados de la naturaleza debe ser un entero entre 2 y 8.')
-  const flat = list(v, `${pfx}pay`)
-  if (flat.length % n !== 0) fail(`Escribiste ${flat.length} números, pero con ${n} estados de la naturaleza deben ser un múltiplo de ${n} (un renglón de ${n} resultados por cada alternativa).`)
-  const m = flat.length / n
-  if (m < 2 || m > 8) fail('Debe haber entre 2 y 8 alternativas.')
-  return { M: Array.from({ length: m }, (_, i) => flat.slice(i * n, (i + 1) * n)), m, n }
+  const M = mat(v, `${pfx}M`)
+  const m = M.length, n = M[0].length
+  if (m < 2) fail('Necesitas al menos dos alternativas (renglones).')
+  if (n < 2) fail('Necesitas al menos dos estados de la naturaleza (columnas).')
+  return { M, m, n }
 }
 
 const altNames = (m: number) => Array.from({ length: m }, (_, i) => `A_{${i + 1}}`)
@@ -27,8 +26,21 @@ const argBest = (xs: number[], dir: 1 | -1) => {
 }
 const names = (idx: number[]) => idx.map(i => `A_{${i + 1}}`).join(L`\ \text{o}\ `)
 
-const payInput = (pfx: string, def: number[]) => ({ kind: 'list' as const, id: `${pfx}pay`, label: 'Resultados por alternativa (un renglón tras otro)', symbol: L`M`, default: def })
-const statesInput = (pfx: string) => ({ kind: 'number' as const, id: `${pfx}estados`, label: 'Número de estados de la naturaleza (columnas)', symbol: L`n`, default: 3 })
+const payInput = (pfx: string, def: number[][], lastRow?: string) => ({
+  kind: 'matrix' as const,
+  id: `${pfx}M`,
+  label: lastRow ? 'Resultados de cada alternativa (renglones) en cada estado de la naturaleza (columnas); el último renglón es la probabilidad de cada estado' : 'Resultados de cada alternativa (renglones) en cada estado de la naturaleza (columnas)',
+  symbol: L`M`,
+  default: def,
+  rowPrefix: 'A',
+  colPrefix: 'E',
+  corner: 'Resultado',
+  lastRow,
+  minRows: 2,
+  minCols: 2,
+  maxRows: 8,
+  maxCols: 8,
+})
 
 // ─── Criterios de decisión sin probabilidades ────────────────────────────────
 
@@ -73,8 +85,7 @@ function critCalc(s: 1 | -1) {
       ? 'Tres alternativas de inversión (renglones) y tres escenarios de mercado: favorable, estable y desfavorable. Los números son ganancias.'
       : 'Tres alternativas (renglones) y tres escenarios. Los números son costos: se prefiere el menor.',
     inputs: [
-      statesInput(pfx),
-      payInput(pfx, gains ? [200, 100, -50, 120, 90, 30, 50, 50, 50] : [20, 35, 60, 30, 32, 40, 45, 45, 45]),
+      payInput(pfx, gains ? [[200, 100, -50], [120, 90, 30], [50, 50, 50]] : [[20, 35, 60], [30, 32, 40], [45, 45, 45]]),
       { kind: 'number', id: `${pfx}alpha`, label: 'Coeficiente de optimismo (Hurwicz)', symbol: L`\alpha`, default: 0.6 },
     ],
     compute: (v) => critCompute(v, s, pfx),
@@ -192,7 +203,7 @@ const criterios: Formula = {
     'Esperar que todos los criterios den la misma alternativa: casi nunca pasa.',
     'Escribir los números en el orden equivocado: son renglones (alternativas), cada uno con tantos números como estados.',
   ],
-  related: ['valor-esperado', 'juego-2x2'],
+  related: ['valor-esperado', 'juego-matricial'],
   keywords: ['decisiones', 'wald', 'maximin', 'maximax', 'laplace', 'hurwicz', 'savage', 'arrepentimiento', 'incertidumbre', 'teoria de decisiones', 'investigacion de operaciones', 'estados de la naturaleza'],
 }
 
@@ -201,9 +212,11 @@ const criterios: Formula = {
 interface Ev { s: 1 | -1; M: number[][]; p: number[]; emv: number[]; best: number[]; bestV: number; evpi: number; evwpi: number; eol: number[] }
 
 function evCompute(v: Values, s: 1 | -1, pfx: string): Ev {
-  const { M, n } = readMatrix(v, pfx)
-  const p = list(v, `${pfx}prob`)
-  if (p.length !== n) fail(`Necesitas ${n} probabilidades (una por estado de la naturaleza) y escribiste ${p.length}.`)
+  const T = mat(v, `${pfx}M`)
+  const M = T.slice(0, -1), p = T[T.length - 1]
+  const n = p.length
+  if (M.length < 2) fail('Necesitas al menos dos alternativas (renglones antes del renglón de probabilidades).')
+  if (n < 2) fail('Necesitas al menos dos estados de la naturaleza (columnas).')
   if (p.some(x => x < 0)) fail('Las probabilidades no pueden ser negativas.')
   if (Math.abs(p.reduce((t, x) => t + x, 0) - 1) > 1e-6) fail(`Las probabilidades deben sumar 1 (ahora suman ${fmt(p.reduce((t, x) => t + x, 0))}).`)
   const emv = M.map(r => r.reduce((t, x, j) => t + x * p[j], 0))
@@ -222,9 +235,7 @@ function evCalc(s: 1 | -1) {
     label: gains ? 'Ganancias (maximizar)' : 'Costos (minimizar)',
     example: gains ? 'Las mismas tres inversiones, pero ahora sabes que el mercado será favorable 30%, estable 50% y desfavorable 20%.' : 'Tres alternativas con costos; probabilidades 30%, 50% y 20%.',
     inputs: [
-      statesInput(pfx),
-      payInput(pfx, gains ? [200, 100, -50, 120, 90, 30, 50, 50, 50] : [20, 35, 60, 30, 32, 40, 45, 45, 45]),
-      { kind: 'list', id: `${pfx}prob`, label: 'Probabilidad de cada estado de la naturaleza', symbol: 'P', default: [0.3, 0.5, 0.2] },
+      payInput(pfx, gains ? [[200, 100, -50], [120, 90, 30], [50, 50, 50], [0.3, 0.5, 0.2]] : [[20, 35, 60], [30, 32, 40], [45, 45, 45], [0.3, 0.5, 0.2]], 'Probabilidad'),
     ],
     compute: (v) => evCompute(v, s, pfx),
     steps: (_v, r) => {
@@ -299,126 +310,233 @@ const valorEsperado: Formula = {
   keywords: ['valor esperado', 'emv', 'evpi', 'informacion perfecta', 'arbol de decision', 'decisiones con riesgo', 'costo de oportunidad', 'investigacion de operaciones'],
 }
 
-// ─── Juego de suma cero 2×2 ──────────────────────────────────────────────────
+// ─── Juego de suma cero m×n ──────────────────────────────────────────────────
 
-interface Game { a: number[][]; maximin: number; minimax: number; saddle: boolean; row: number; col: number; p: number; q: number; v: number; rowMin: number[]; colMax: number[]; D: number }
+interface Game {
+  A: number[][]
+  m: number
+  n: number
+  rowMin: number[]
+  colMax: number[]
+  maximin: number
+  minimax: number
+  saddles: [number, number][]
+  p: number[]
+  q: number[]
+  v: number
+  shift: number
+  lpX: number[]
+  lpY: number[]
+}
+
+export function solveGame(A: number[][]): Game {
+  const m = A.length, n = A[0].length
+  const rowMin = A.map(r => Math.min(...r)), colMax = Array.from({ length: n }, (_, j) => Math.max(...A.map(r => r[j])))
+  const maximin = Math.max(...rowMin), minimax = Math.min(...colMax)
+  const saddles: [number, number][] = []
+  for (let i = 0; i < m; i++) for (let j = 0; j < n; j++) if (Math.abs(A[i][j] - rowMin[i]) < 1e-9 && Math.abs(A[i][j] - colMax[j]) < 1e-9) saddles.push([i, j])
+  if (saddles.length) {
+    const [i, j] = saddles[0]
+    return { A, m, n, rowMin, colMax, maximin, minimax, saddles, p: A.map((_, k) => (k === i ? 1 : 0)), q: Array.from({ length: n }, (_, k) => (k === j ? 1 : 0)), v: A[i][j], shift: 0, lpX: [], lpY: [] }
+  }
+  // sin punto silla: programación lineal. Se suma k para que todos los pagos sean positivos (el valor del juego pasa a ser v + k > 0)
+  const mn = Math.min(...A.flat())
+  const shift = mn >= 1 ? 0 : 1 - mn
+  const cons: SCon[] = Array.from({ length: n }, (_, j) => ({ a: A.map(r => r[j] + shift), op: 1, b: 1 }))
+  const sol = solveSimplex('min', new Array(m).fill(1), cons)
+  const total = sol.x.reduce((t, x) => t + x, 0)
+  const vp = 1 / total
+  const p = sol.x.map(x => x * vp)
+  const q = sol.duals.map(y => y * vp)
+  return { A, m, n, rowMin, colMax, maximin, minimax, saddles, p, q, v: vp - shift, shift, lpX: sol.x, lpY: sol.duals }
+}
 
 const juego: Formula = {
-  id: 'juego-2x2',
-  name: 'Juegos de suma cero 2×2: punto silla y estrategia mixta',
+  id: 'juego-matricial',
+  name: 'Juegos de suma cero: punto silla y estrategias mixtas',
   category: 'decisiones',
-  latex: L`p^*=\frac{a_{22}-a_{21}}{a_{11}-a_{12}-a_{21}+a_{22}}`,
+  latex: L`\max_i\min_ja_{ij}\ \le\ v\ \le\ \min_j\max_ia_{ij}`,
   forms: [
-    { label: 'Estrategia óptima del otro jugador', latex: L`q^*=\frac{a_{22}-a_{12}}{a_{11}-a_{12}-a_{21}+a_{22}}` },
-    { label: 'Valor del juego', latex: L`v=\frac{a_{11}a_{22}-a_{12}a_{21}}{a_{11}-a_{12}-a_{21}+a_{22}}` },
-    { label: 'Punto silla', latex: L`\max_i\min_ja_{ij}=\min_j\max_ia_{ij}=v` },
+    { label: 'Punto silla (solución pura)', latex: L`\max_i\min_ja_{ij}=\min_j\max_ia_{ij}=v` },
+    { label: 'Pago esperado de A con la mezcla p', latex: L`E(p,j)=\sum_ip_i\,a_{ij}\ \ge v\ \ \text{para toda columna }j` },
+    { label: 'Caso 2×2: estrategia de A', latex: L`p^*=\frac{a_{22}-a_{21}}{a_{11}-a_{12}-a_{21}+a_{22}}` },
+    { label: 'Caso 2×2: estrategia de B', latex: L`q^*=\frac{a_{22}-a_{12}}{a_{11}-a_{12}-a_{21}+a_{22}}` },
+    { label: 'Caso 2×2: valor del juego', latex: L`v=\frac{a_{11}a_{22}-a_{12}a_{21}}{a_{11}-a_{12}-a_{21}+a_{22}}` },
   ],
   summary: 'Dos jugadores con intereses opuestos: lo que uno gana lo pierde el otro. ¿Qué estrategia conviene a cada uno?',
-  goal: 'Hallar la mejor estrategia (pura o **mixta**, al azar con ciertas probabilidades) de cada jugador y el **valor del juego**: lo que gana en promedio el jugador de los renglones.',
+  goal: 'Hallar la mejor estrategia (pura o **mixta**, al azar con ciertas probabilidades) de cada jugador y el **valor del juego**, para una tabla de pagos de **cualquier tamaño**.',
   variables: [
     { symbol: 'a_{ij}', meaning: 'Pago al jugador de los **renglones** (A) cuando A elige su estrategia $i$ y el jugador de las columnas (B) elige $j$. B paga lo mismo' },
-    { symbol: 'p^*', meaning: 'Probabilidad con que A debe elegir su estrategia 1 (y $1-p^*$ la 2)' },
-    { symbol: 'q^*', meaning: 'Probabilidad con que B debe elegir su estrategia 1' },
+    { symbol: 'p_i', meaning: 'Probabilidad con que A debe elegir su estrategia $i$' },
+    { symbol: 'q_j', meaning: 'Probabilidad con que B debe elegir su estrategia $j$' },
     { symbol: 'v', meaning: 'Valor del juego: el pago esperado de A con estrategias óptimas. Si $v>0$ el juego favorece a A' },
   ],
   whenToUse: [
     'Competencia entre dos partes donde lo que gana una lo pierde la otra: precios, publicidad, campañas, deportes.',
-    'Se resuelve en dos pasos: buscar un **punto silla** (solución con estrategias puras); si no existe, usar la fórmula de estrategia mixta.',
+    'Se resuelve en dos pasos: buscar un **punto silla** (solución con estrategias puras); si no existe, se resuelve con programación lineal (una tabla $m\\times n$ cualquiera).',
   ],
   intuition: [
     'A quiere asegurar lo más posible: mira el peor pago de cada renglón y elige el mejor (**maximin**). B hace lo contrario con las columnas (**minimax**). Si los dos números coinciden hay **punto silla**: ninguno quiere cambiar, y la solución es pura.',
-    'Si no coinciden, cada jugador puede mejorar **escondiendo** su elección: juega al azar con las probabilidades $p^*$ y $q^*$. Así el rival no puede aprovechar ninguna jugada.',
-    'La probabilidad $p^*$ hace que A obtenga **lo mismo** sin importar qué haga B (se igualan los pagos esperados). Eso es lo que muestra la gráfica: el cruce de las dos rectas.',
+    'Si no coinciden, cada jugador puede mejorar **escondiendo** su elección: juega al azar con las probabilidades $p$ y $q$. Así el rival no puede aprovechar ninguna jugada. El teorema del minimax de von Neumann garantiza que siempre existe una solución así.',
+    'Cuando B juega contra la mezcla óptima de A, **todas** las jugadas que B usa en su mezcla le dan a A exactamente $v$; las que B no usa le dan a A más. Eso es lo que muestra la gráfica en el caso $2\\times n$.',
+    'La programación lineal sale de pedir que la mezcla $p$ garantice al menos $v$ contra **cada** columna. El problema de A y el de B son duales: por eso los precios sombra del símplex son la estrategia de B.',
   ],
-  derivation: {
-    steps: [
-      { label: 'Si A usa la estrategia 1 con probabilidad $p$, su pago esperado contra cada columna es', latex: L`E_1(p)=pa_{11}+(1-p)a_{21}\qquad E_2(p)=pa_{12}+(1-p)a_{22}` },
-      { label: 'A elige $p$ para maximizar el **peor** de los dos: se igualan', latex: L`E_1(p)=E_2(p)\ \Rightarrow\ p(a_{11}-a_{21}-a_{12}+a_{22})=a_{22}-a_{21}` },
-      { label: 'Despejamos', latex: L`p^*=\frac{a_{22}-a_{21}}{a_{11}-a_{12}-a_{21}+a_{22}}` },
-    ],
-  },
   calculators: [
     calc<Game>({
       id: 'juego',
-      label: 'Resolver el juego',
-      example: 'Pagos al jugador A (renglones). Si A elige 1 y B elige 1, A gana 3; si A elige 1 y B elige 2, A pierde 1; etc.',
-      inputs: [
-        { kind: 'number', id: 'a11', label: 'Pago si A elige 1 y B elige 1', symbol: 'a_{11}', default: 3 },
-        { kind: 'number', id: 'a12', label: 'Pago si A elige 1 y B elige 2', symbol: 'a_{12}', default: -1 },
-        { kind: 'number', id: 'a21', label: 'Pago si A elige 2 y B elige 1', symbol: 'a_{21}', default: -2 },
-        { kind: 'number', id: 'a22', label: 'Pago si A elige 2 y B elige 2', symbol: 'a_{22}', default: 4 },
-      ],
-      compute: (v) => {
-        const a = [[num(v, 'a11'), num(v, 'a12')], [num(v, 'a21'), num(v, 'a22')]]
-        const rowMin = a.map(r => Math.min(...r)), colMax = [Math.max(a[0][0], a[1][0]), Math.max(a[0][1], a[1][1])]
-        const maximin = Math.max(...rowMin), minimax = Math.min(...colMax)
-        const saddle = Math.abs(maximin - minimax) < 1e-9
-        const D = a[0][0] - a[0][1] - a[1][0] + a[1][1]
-        const row = rowMin[0] >= rowMin[1] ? 0 : 1, col = colMax[0] <= colMax[1] ? 0 : 1
-        if (!saddle && Math.abs(D) < 1e-12) fail('Con esos pagos no se puede resolver el juego (denominador 0). Cambia algún número.')
-        if (saddle) return { a, maximin, minimax, saddle, row, col, p: row === 0 ? 1 : 0, q: col === 0 ? 1 : 0, v: maximin, rowMin, colMax, D }
-        return { a, maximin, minimax, saddle, row, col, p: (a[1][1] - a[1][0]) / D, q: (a[1][1] - a[0][1]) / D, v: (a[0][0] * a[1][1] - a[0][1] * a[1][0]) / D, rowMin, colMax, D }
-      },
-      steps: (_v, r) => {
-        const f = (x: number) => fmt(x)
-        const steps: CalcStep[] = [
-          { label: 'Matriz de pagos al jugador A (renglones). Al lado, el mínimo de cada renglón y, abajo, el máximo de cada columna', latex: L`\begin{array}{c|rr|r}&B_1&B_2&\text{mín fila}\\A_1&${f(r.a[0][0])}&${f(r.a[0][1])}&${f(r.rowMin[0])}\\A_2&${f(r.a[1][0])}&${f(r.a[1][1])}&${f(r.rowMin[1])}\\\text{máx col}&${f(r.colMax[0])}&${f(r.colMax[1])}&\end{array}` },
-          { label: 'A busca el mejor de sus peores casos (maximin); B busca el menor de sus pérdidas máximas (minimax)', latex: L`\text{maximin}=\max\{${f(r.rowMin[0])},${f(r.rowMin[1])}\}=${f(r.maximin)}\qquad\text{minimax}=\min\{${f(r.colMax[0])},${f(r.colMax[1])}\}=${f(r.minimax)}` },
-        ]
-        if (r.saddle) {
-          steps.push({ label: 'Coinciden: hay **punto silla**. La solución es con estrategias puras', latex: L`v=${f(r.v)}\quad\text{A juega }A_${r.row + 1}\quad\text{B juega }B_${r.col + 1}` })
-        } else {
-          steps.push(
-            { label: 'No coinciden: no hay punto silla y hay que **mezclar**. Denominador común', latex: L`D=a_{11}-a_{12}-a_{21}+a_{22}=${f(r.a[0][0])}-${f(r.a[0][1])}-${f(r.a[1][0])}+${f(r.a[1][1])}=${f(r.D)}` },
-            { label: 'Probabilidad de que A juegue $A_1$', latex: L`p^*=\frac{a_{22}-a_{21}}{D}=\frac{${f(r.a[1][1])}-${f(r.a[1][0])}}{${f(r.D)}}=${f(r.p)}` },
-            { label: 'Probabilidad de que B juegue $B_1$', latex: L`q^*=\frac{a_{22}-a_{12}}{D}=\frac{${f(r.a[1][1])}-${f(r.a[0][1])}}{${f(r.D)}}=${f(r.q)}` },
-            { label: 'Valor del juego', latex: L`v=\frac{a_{11}a_{22}-a_{12}a_{21}}{D}=\frac{(${f(r.a[0][0])})(${f(r.a[1][1])})-(${f(r.a[0][1])})(${f(r.a[1][0])})}{${f(r.D)}}=${f(r.v)}` },
-            { label: 'Comprobación: A obtiene $v$ contra cualquier columna', latex: L`E_1=${f(r.p)}(${f(r.a[0][0])})+${f(1 - r.p)}(${f(r.a[1][0])})=${f(r.p * r.a[0][0] + (1 - r.p) * r.a[1][0])}\qquad E_2=${f(r.p)}(${f(r.a[0][1])})+${f(1 - r.p)}(${f(r.a[1][1])})=${f(r.p * r.a[0][1] + (1 - r.p) * r.a[1][1])}` },
-          )
-        }
-        return steps
-      },
-      answer: (_v, r) => r.saddle ? L`v=${fmt(r.v)}\quad\text{(punto silla: }A_${r.row + 1},B_${r.col + 1}\text{)}` : L`v=${fmt(r.v)}\quad p^*=${fmt(r.p)}\quad q^*=${fmt(r.q)}`,
-      extras: (_v, r) => r.saddle
-        ? [{ label: 'Tipo de solución', latex: L`\text{pura}` }, { label: 'Maximin = minimax', latex: fmt(r.maximin) }]
-        : [{ label: 'A juega A₁ con', latex: `${fmt(r.p * 100, 4)}\\%` }, { label: 'B juega B₁ con', latex: `${fmt(r.q * 100, 4)}\\%` }, { label: 'Maximin / minimax', latex: `${fmt(r.maximin)}\\ /\\ ${fmt(r.minimax)}` }],
-      interpret: (_v, r) => {
-        const side = Math.abs(r.v) < 1e-9 ? 'es **justo**: ninguno tiene ventaja' : r.v > 0 ? `**favorece a A**: A gana en promedio ${fmt(r.v)} por partida` : `**favorece a B**: B gana en promedio ${fmt(-r.v)} por partida`
-        return r.saddle
-          ? [
-            { tone: 'good', text: `Hay **punto silla**: A siempre juega $A_${r.row + 1}$ y B siempre juega $B_${r.col + 1}$. El valor del juego es **${fmt(r.v)}** y ${side}.` },
-            { tone: 'info', text: 'En un punto silla ningún jugador gana nada cambiando su estrategia: la solución es estable y no hace falta ser impredecible.' },
-          ]
-          : [
-            { tone: 'good', text: `No hay punto silla, así que ambos deben jugar al azar. A elige $A_1$ con probabilidad **${fmt(r.p * 100, 3)}%** y $A_2$ con ${fmt((1 - r.p) * 100, 3)}%. B elige $B_1$ con **${fmt(r.q * 100, 3)}%** y $B_2$ con ${fmt((1 - r.q) * 100, 3)}%.` },
-            { tone: 'info', text: `El juego ${side}. Con estas probabilidades A obtiene $${fmt(r.v)}$ **sin importar** lo que haga B.` },
-            { tone: 'info', text: `Sin mezclar, A sólo podría asegurar $${fmt(r.maximin)}$ (maximin): mezclar mejora la garantía hasta $${fmt(r.v)}$.` },
-          ]
-      },
-      visual: (_v, r) => {
-        const e1 = (p: number) => p * r.a[0][0] + (1 - p) * r.a[1][0], e2 = (p: number) => p * r.a[0][1] + (1 - p) * r.a[1][1]
-        return {
-          type: 'plot',
-          curves: [
-            { points: [[0, e1(0)], [1, e1(1)]], tone: 'a', label: L`\text{Si B juega }B_1` },
-            { points: [[0, e2(0)], [1, e2(1)]], tone: 'b', label: L`\text{Si B juega }B_2` },
-          ],
-          marks: [{ x: r.p, y: r.v, tone: 'warn', label: `p = ${fmt(r.p, 3)}, v = ${fmt(r.v, 3)}` }],
-          segments: [{ from: [r.p, Math.min(e1(0), e1(1), e2(0), e2(1))], to: [r.p, r.v], tone: 'warn', dashed: true }],
-          xRange: [0, 1],
-          caption: 'Pago esperado de A según la probabilidad $p$ de jugar $A_1$ (eje horizontal), contra cada jugada de B. B se queda con la peor de las dos rectas para A; A escoge el $p$ donde esa “peor” es lo más alta posible (punto rojo).',
-        }
-      },
+      label: 'Ejemplo: 2×2',
+      example: 'Pagos al jugador A (renglones). Con la tabla de abajo, si A elige 1 y B elige 1, A gana 3; si A elige 1 y B elige 2, A pierde 1. Agrega o quita estrategias con los botones.',
+      inputs: [{ kind: 'matrix', id: 'a2', label: 'Pagos al jugador A (renglones = estrategias de A, columnas = estrategias de B)', symbol: 'a_{ij}', default: [[3, -1], [-2, 4]], rowPrefix: 'A', colPrefix: 'B', corner: 'Pago', minRows: 2, minCols: 2, maxRows: 7, maxCols: 7 }],
+      compute: (v) => solveGame(mat(v, 'a2')),
+      steps: (_v, r) => gameSteps(r),
+      answer: (_v, r) => (r.saddles.length ? L`v=${fmt(r.v)}\quad\text{(punto silla)}` : L`v=${fmt(r.v)}`),
+      extras: (_v, r) => gameExtras(r),
+      interpret: (_v, r) => gameInterpret(r),
+      visual: (_v, r) => gameVisual(r),
+    }),
+    calc<Game>({
+      id: 'mxn',
+      label: 'Ejemplo: 3×3 (piedra, papel o tijera)',
+      example: 'Piedra, papel o tijera: ganar paga 1, perder paga −1 y empatar 0. No hay punto silla; la solución mixta es jugar cada una con probabilidad 1/3.',
+      inputs: [{ kind: 'matrix', id: 'a3', label: 'Pagos al jugador A (renglones = estrategias de A, columnas = estrategias de B)', symbol: 'a_{ij}', default: [[0, -1, 1], [1, 0, -1], [-1, 1, 0]], rowPrefix: 'A', colPrefix: 'B', corner: 'Pago', minRows: 2, minCols: 2, maxRows: 7, maxCols: 7 }],
+      compute: (v) => solveGame(mat(v, 'a3')),
+      steps: (_v, r) => gameSteps(r),
+      answer: (_v, r) => (r.saddles.length ? L`v=${fmt(r.v)}\quad\text{(punto silla)}` : L`v=${fmt(r.v)}`),
+      extras: (_v, r) => gameExtras(r),
+      interpret: (_v, r) => gameInterpret(r),
+      visual: (_v, r) => gameVisual(r),
+    }),
+    calc<Game>({
+      id: 'silla',
+      label: 'Ejemplo: con punto silla',
+      example: 'Aquí el maximin y el minimax coinciden: la solución es pura.',
+      inputs: [{ kind: 'matrix', id: 'as', label: 'Pagos al jugador A (renglones = estrategias de A, columnas = estrategias de B)', symbol: 'a_{ij}', default: [[4, 2, 3], [3, 1, 5], [6, 2, 4]], rowPrefix: 'A', colPrefix: 'B', corner: 'Pago', minRows: 2, minCols: 2, maxRows: 7, maxCols: 7 }],
+      compute: (v) => solveGame(mat(v, 'as')),
+      steps: (_v, r) => gameSteps(r),
+      answer: (_v, r) => (r.saddles.length ? L`v=${fmt(r.v)}\quad\text{(punto silla)}` : L`v=${fmt(r.v)}`),
+      extras: (_v, r) => gameExtras(r),
+      interpret: (_v, r) => gameInterpret(r),
+      visual: (_v, r) => gameVisual(r),
     }),
   ],
   commonMistakes: [
     'Usar los pagos del jugador equivocado: la matriz da los pagos del jugador de los **renglones**; B paga lo mismo.',
-    'Aplicar la fórmula mixta cuando **sí** hay punto silla: primero hay que revisar maximin = minimax.',
-    'Olvidar que $p^*$ es la probabilidad de la **primera** estrategia.',
+    'Aplicar una mezcla cuando **sí** hay punto silla: primero hay que revisar maximin = minimax.',
     'Creer que jugar mixto es “indecisión”: es la única forma de no ser explotado cuando no hay punto silla.',
+    'Olvidar que las probabilidades de cada jugador suman 1.',
   ],
-  related: ['criterios-decision', 'valor-esperado'],
-  keywords: ['teoria de juegos', 'juego de suma cero', 'punto silla', 'estrategia mixta', 'maximin', 'minimax', 'valor del juego', 'investigacion de operaciones', 'dos jugadores'],
+  related: ['criterios-decision', 'valor-esperado', 'lp-simplex'],
+  keywords: ['teoria de juegos', 'juego de suma cero', 'punto silla', 'estrategia mixta', 'maximin', 'minimax', 'valor del juego', 'investigacion de operaciones', 'dos jugadores', 'piedra papel tijera'],
+}
+
+function gameSteps(r: Game): CalcStep[] {
+  const f = (x: number) => fmt(x)
+  const A = r.A.map((_, i) => `A_{${i + 1}}`), B = r.A[0].map((_, j) => `B_{${j + 1}}`)
+  const steps: CalcStep[] = [
+    {
+      label: 'Matriz de pagos al jugador A (renglones). A la derecha, el mínimo de cada renglón; abajo, el máximo de cada columna',
+      latex: L`\begin{array}{c|${'r'.repeat(r.n)}|r}&${B.join('&')}&\text{mín fila}\\${r.A.map((row, i) => `${A[i]}&${row.map(f).join('&')}&${f(r.rowMin[i])}`).join(L`\\`)}\\\text{máx col}&${r.colMax.map(f).join('&')}&\end{array}`,
+    },
+    {
+      label: 'A busca el mejor de sus peores casos (maximin); B busca el menor de sus pérdidas máximas (minimax)',
+      latex: L`\text{maximin}=\max\{${r.rowMin.map(f).join(',\\ ')}\}=${f(r.maximin)}\qquad\text{minimax}=\min\{${r.colMax.map(f).join(',\\ ')}\}=${f(r.minimax)}`,
+    },
+  ]
+  if (r.saddles.length) {
+    steps.push({
+      label: `Coinciden: hay **punto silla** en ${r.saddles.map(([i, j]) => `$(A_{${i + 1}},B_{${j + 1}})$`).join(' y ')}. La solución es con estrategias puras`,
+      latex: L`v=${f(r.v)}`,
+    })
+    return steps
+  }
+  const sh = r.shift
+  steps.push({
+    label: `No coinciden (${f(r.maximin)} < ${f(r.minimax)}): **no hay punto silla** y hay que mezclar. Se resuelve con programación lineal${sh ? `: primero se suma $k=${f(sh)}$ a todos los pagos para que sean positivos (el valor del juego se corre $k$)` : ''}`,
+    latex: L`\min\ \sum_ix_i\quad\text{s.a.}\quad\sum_i(a_{ij}${sh ? `+${f(sh)}` : ''})\,x_i\ge1\ \ (j=1,\ldots,${r.n}),\ \ x_i\ge0`,
+  })
+  steps.push({
+    label: 'Solución del problema lineal (con el método símplex): $x$ y sus precios sombra $y$ (los de las restricciones)',
+    latex: L`x=(${r.lpX.map(f).join(',\\ ')})\qquad y=(${r.lpY.map(f).join(',\\ ')})\qquad\sum x=${f(r.lpX.reduce((t, x) => t + x, 0))}`,
+  })
+  steps.push({
+    label: 'Se vuelve a las probabilidades: el valor del juego desplazado es $1/\\sum x$, y se normaliza',
+    latex: L`v'=\frac{1}{\sum x}=${f(1 / r.lpX.reduce((t, x) => t + x, 0))}\qquad p=v'x=(${r.p.map(f).join(',\\ ')})\qquad q=v'y=(${r.q.map(f).join(',\\ ')})\qquad v=v'${sh ? `-${f(sh)}` : ''}=${f(r.v)}`,
+  })
+  if (r.m === 2 && r.n === 2) {
+    const D = r.A[0][0] - r.A[0][1] - r.A[1][0] + r.A[1][1]
+    steps.push({ label: 'En el caso 2×2 también sale con las fórmulas cerradas (mismo resultado)', latex: L`p^*=\frac{a_{22}-a_{21}}{D}=${f((r.A[1][1] - r.A[1][0]) / D)}\qquad q^*=\frac{a_{22}-a_{12}}{D}=${f((r.A[1][1] - r.A[0][1]) / D)}\qquad D=${f(D)}` })
+  }
+  const eA = r.A[0].map((_, j) => r.A.reduce((t, row, i) => t + r.p[i] * row[j], 0))
+  const eB = r.A.map(row => row.reduce((t, a, j) => t + a * r.q[j], 0))
+  steps.push({
+    label: 'Comprobación: contra **cada** columna A obtiene al menos $v$, y contra cada renglón B paga como máximo $v$',
+    latex: L`\sum_ip_ia_{ij}=(${eA.map(f).join(',\\ ')})\ge${f(r.v)}\qquad\sum_ja_{ij}q_j=(${eB.map(f).join(',\\ ')})\le${f(r.v)}`,
+  })
+  return steps
+}
+
+function gameExtras(r: Game) {
+  return [
+    { label: 'Estrategia de A', latex: `p=(${r.p.map(x => fmt(x)).join(',\\ ')})` },
+    { label: 'Estrategia de B', latex: `q=(${r.q.map(x => fmt(x)).join(',\\ ')})` },
+    { label: 'Maximin / minimax', latex: `${fmt(r.maximin)}\\ /\\ ${fmt(r.minimax)}` },
+  ]
+}
+
+function gameInterpret(r: Game) {
+  const side = Math.abs(r.v) < 1e-9 ? 'es **justo**: ninguno tiene ventaja' : r.v > 0 ? `**favorece a A**: A gana en promedio ${fmt(r.v)} por partida` : `**favorece a B**: B gana en promedio ${fmt(-r.v)} por partida`
+  const pct = (xs: number[], name: string) => xs.flatMap((x, i) => (x > 1e-9 ? [`$${name}_{${i + 1}}$ con **${fmt(x * 100, 3)}%**`] : [])).join(', ')
+  const out: { tone: 'good' | 'info' | 'warn'; text: string }[] = []
+  if (r.saddles.length) {
+    out.push({ tone: 'good', text: `Hay **punto silla**: A siempre juega $A_{${r.saddles[0][0] + 1}}$ y B siempre juega $B_{${r.saddles[0][1] + 1}}$. El valor del juego es **${fmt(r.v)}** y ${side}.` })
+    if (r.saddles.length > 1) out.push({ tone: 'info', text: `Hay ${r.saddles.length} puntos silla con el mismo valor: ${r.saddles.map(([i, j]) => `$(A_{${i + 1}},B_{${j + 1}})$`).join(', ')}.` })
+    out.push({ tone: 'info', text: 'En un punto silla ningún jugador gana nada cambiando su estrategia: la solución es estable y no hace falta ser impredecible.' })
+  } else {
+    out.push({ tone: 'good', text: `No hay punto silla, así que ambos deben jugar al azar. A elige ${pct(r.p, 'A')}. B elige ${pct(r.q, 'B')}.` })
+    out.push({ tone: 'info', text: `El juego ${side}. Con esas probabilidades A obtiene al menos $${fmt(r.v)}$ **sin importar** lo que haga B.` })
+    out.push({ tone: 'info', text: `Sin mezclar, A sólo podría asegurar $${fmt(r.maximin)}$ (maximin) y B no podría limitar sus pérdidas a menos de $${fmt(r.minimax)}$ (minimax): mezclar cierra esa brecha hasta $${fmt(r.v)}$.` })
+  }
+  return out
+}
+
+function gameVisual(r: Game): VisualSpec | undefined {
+  const { A, m, n } = r
+  if (m === 2) {
+    const lines = Array.from({ length: n }, (_, j) => ({ f: (p: number) => p * A[0][j] + (1 - p) * A[1][j], j }))
+    const env = (p: number) => Math.min(...lines.map(l => l.f(p)))
+    const pStar = r.p[0]
+    const pts = Array.from({ length: 101 }, (_, k) => [k / 100, env(k / 100)] as [number, number])
+    const all = lines.flatMap(l => [l.f(0), l.f(1)])
+    return {
+      type: 'plot',
+      curves: [
+        ...lines.map((l, k) => ({ points: [[0, l.f(0)], [1, l.f(1)]] as [number, number][], tone: toneAt(k), label: `B_{${l.j + 1}}` })),
+        { points: pts, tone: 'warn', dashed: true, label: L`\text{lo que A asegura}` },
+      ],
+      marks: [{ x: pStar, y: r.v, tone: 'warn', label: `p = ${fmt(pStar, 3)}, v = ${fmt(r.v, 3)}` }],
+      xRange: [0, 1],
+      yRange: [Math.min(...all) - 0.3, Math.max(...all) + 0.3],
+      caption: 'Pago esperado de A según la probabilidad $p$ de jugar $A_1$ (eje horizontal), contra cada jugada de B. B se queda con la peor para A (línea punteada); A escoge el $p$ donde esa “peor” es lo más alta posible (punto rojo).',
+    }
+  }
+  if (n === 2) {
+    const lines = Array.from({ length: m }, (_, i) => ({ f: (q: number) => q * A[i][0] + (1 - q) * A[i][1], i }))
+    const env = (q: number) => Math.max(...lines.map(l => l.f(q)))
+    const pts = Array.from({ length: 101 }, (_, k) => [k / 100, env(k / 100)] as [number, number])
+    const all = lines.flatMap(l => [l.f(0), l.f(1)])
+    return {
+      type: 'plot',
+      curves: [
+        ...lines.map((l, k) => ({ points: [[0, l.f(0)], [1, l.f(1)]] as [number, number][], tone: toneAt(k), label: `A_{${l.i + 1}}` })),
+        { points: pts, tone: 'warn', dashed: true, label: L`\text{lo máximo que B paga}` },
+      ],
+      marks: [{ x: r.q[0], y: r.v, tone: 'warn', label: `q = ${fmt(r.q[0], 3)}, v = ${fmt(r.v, 3)}` }],
+      xRange: [0, 1],
+      yRange: [Math.min(...all) - 0.3, Math.max(...all) + 0.3],
+      caption: 'Lo que A obtiene según la probabilidad $q$ de que B juegue $B_1$, contra cada jugada de A. A se queda con la mejor para él (línea punteada); B escoge el $q$ donde esa “mejor” es lo más baja posible (punto rojo).',
+    }
+  }
+  return barsSpec([...r.p, ...r.q], [...r.p.map((_, i) => `A${i + 1}`), ...r.q.map((_, j) => `B${j + 1}`)], { caption: 'Probabilidad con que cada jugador debe elegir cada estrategia (A primero, luego B).', format: x => `${fmt(x * 100, 3)}%` })
 }
 
 export const DECISIONES: Formula[] = [criterios, valorEsperado, juego]

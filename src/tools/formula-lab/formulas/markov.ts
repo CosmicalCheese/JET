@@ -1,9 +1,10 @@
-import { calc, fail, list, num, type Formula, type Values } from '../types'
+import { calc, fail, list, mat, num, type Formula, type Values } from '../types'
 import { fmt } from '../format'
-import { L, barsSpec, matrixTex, solveLinear, squareMatrix, toneAt } from './oi-comun'
+import { L, barsSpec, matrixTex, solveLinear, toneAt } from './oi-comun'
 
 function readP(v: Values, id: string): number[][] {
-  const P = squareMatrix(list(v, id), 'La matriz de transición P', 2, 6)
+  const P = mat(v, id)
+  if (P.length !== P[0].length) fail('La matriz de transición debe ser **cuadrada** (el mismo número de renglones que de columnas): de cada estado se pasa a cualquiera de los estados.')
   P.forEach((row, i) => {
     if (row.some(x => x < 0 || x > 1 + 1e-9)) fail(`El renglón ${i + 1} tiene probabilidades fuera del rango 0 a 1.`)
     const s = row.reduce((t, x) => t + x, 0)
@@ -27,8 +28,8 @@ function stationary(P: number[][]): number[] {
   return pi.map(x => (Math.abs(x) < 1e-12 ? 0 : x))
 }
 
-const pInput = (def: number[]) => ({ kind: 'list' as const, id: 'P', label: 'Matriz de transición P (n×n, un renglón tras otro)', symbol: L`P`, default: def })
-const P3 = [0.7, 0.2, 0.1, 0.3, 0.5, 0.2, 0.2, 0.3, 0.5]
+const pInput = (def: number[][]) => ({ kind: 'matrix' as const, id: 'P', label: 'Matriz de transición P: probabilidad de pasar del estado del renglón al de la columna (cada renglón suma 1)', symbol: L`P`, default: def, square: true, rowPrefix: 'E', colPrefix: 'E', corner: 'de \\ a', minRows: 2, minCols: 2, maxRows: 8, maxCols: 8 })
+const P3 = [[0.7, 0.2, 0.1], [0.3, 0.5, 0.2], [0.2, 0.3, 0.5]]
 const stateNames = (n: number) => Array.from({ length: n }, (_, i) => `${i + 1}`)
 
 interface Stat { P: number[][]; pi: number[]; back: number[] }

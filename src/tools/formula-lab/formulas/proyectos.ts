@@ -1,4 +1,4 @@
-import { calc, fail, list, num, type Formula } from '../types'
+import { calc, fail, mat, num, type Formula } from '../types'
 import { fmt, normalCDF, normalInv } from '../format'
 import { L } from './oi-comun'
 
@@ -89,19 +89,14 @@ const pert: Formula = {
     calc<PertProj>({
       id: 'proyecto',
       label: 'Ruta crítica del proyecto',
-      example: 'La ruta crítica tiene 3 actividades. Escribe a, m, b de cada una, en orden. Plazo: 14 semanas.',
+      example: 'La ruta crítica tiene 3 actividades. Escribe en cada renglón las tres estimaciones (optimista, más probable y pesimista) de una actividad de la ruta crítica; agrega o quita renglones con los botones. Plazo: 14 semanas.',
       inputs: [
-        { kind: 'list', id: 'abm', label: 'Actividades de la ruta crítica: a, m, b de cada una', symbol: L`a,m,b`, default: [2, 4, 6, 3, 5, 13, 1, 2, 3] },
+        { kind: 'matrix', id: 'abm', label: 'Actividades de la ruta crítica (una por renglón)', symbol: L`a,m,b`, default: [[2, 4, 6], [3, 5, 13], [1, 2, 3]], rowPrefix: 'Act ', colNames: ['Optimista a', 'Más probable m', 'Pesimista b'], fixedCols: true, minRows: 1, maxRows: 30 },
         { kind: 'number', id: 'T0', label: 'Plazo que quieres cumplir', symbol: 'T_0', default: 14 },
       ],
       compute: (v) => {
-        const nums = list(v, 'abm')
-        if (nums.length < 3 || nums.length % 3 !== 0) fail('Escribe tres números (a, m, b) por cada actividad: la lista debe tener 3, 6, 9… números.')
-        const acts: Act[] = []
-        for (let i = 0; i < nums.length; i += 3) {
-          checkTimes(nums[i], nums[i + 1], nums[i + 2], `Actividad ${i / 3 + 1}: `)
-          acts.push(toAct(nums[i], nums[i + 1], nums[i + 2]))
-        }
+        const table = mat(v, 'abm')
+        const acts: Act[] = table.map(([a, m, b], i) => { checkTimes(a, m, b, `Actividad ${i + 1}: `); return toAct(a, m, b) })
         const mu = acts.reduce((s, x) => s + x.te, 0), variance = acts.reduce((s, x) => s + x.v, 0)
         if (!(variance > 0)) fail('Todas las actividades tienen duración exacta ($a=m=b$): no hay incertidumbre y la probabilidad es 0 o 1. Usa CPM.')
         const sd = Math.sqrt(variance), T0 = num(v, 'T0'), z = (T0 - mu) / sd
@@ -193,26 +188,24 @@ const cpm: Formula = {
     calc<Cpm>({
       id: 'cpm',
       label: 'Calcular ruta crítica',
-      example: 'Cada actividad se escribe con tres números: duración, predecesora 1 y predecesora 2 (0 = ninguna). Las actividades se numeran 1, 2, 3… en el orden en que las escribes, y una predecesora debe tener número menor. Si una actividad tiene más de dos predecesoras, agrega una actividad ficticia de duración 0.',
+      example: 'Cada renglón es una actividad: su duración y hasta tres predecesoras (el **número de renglón** de las actividades que deben terminar antes; 0 = ninguna). Una predecesora debe estar en un renglón anterior. Agrega o quita actividades con los botones.',
       inputs: [
-        { kind: 'list', id: 'act', label: 'Por actividad: duración, predecesora 1, predecesora 2', symbol: L`d,p_1,p_2`, default: [3, 0, 0, 4, 1, 0, 2, 1, 0, 5, 2, 0, 3, 3, 0, 2, 4, 5] },
+        { kind: 'matrix', id: 'act', label: 'Actividades (una por renglón)', symbol: L`d,p_i`, default: [[3, 0, 0, 0], [4, 1, 0, 0], [2, 1, 0, 0], [5, 2, 0, 0], [3, 3, 0, 0], [2, 4, 5, 0]], rowPrefix: 'Act ', colNames: ['Duración', 'Pred. 1', 'Pred. 2', 'Pred. 3'], fixedCols: true, minRows: 1, maxRows: 40 },
       ],
       compute: (v) => {
-        const nums = list(v, 'act')
-        if (nums.length < 3 || nums.length % 3 !== 0) fail('Escribe tres números por actividad (duración, predecesora 1, predecesora 2): la lista debe tener 3, 6, 9… números.')
-        const n = nums.length / 3
-        if (n > 40) fail('Máximo 40 actividades.')
+        const table = mat(v, 'act')
+        const n = table.length
         const d: number[] = [], preds: number[][] = []
-        for (let i = 0; i < n; i++) {
-          const dur = nums[3 * i], p1 = nums[3 * i + 1], p2 = nums[3 * i + 2]
+        table.forEach((row, i) => {
+          const dur = row[0]
           if (dur < 0) fail(`La actividad ${i + 1} tiene duración negativa.`)
-          const ps = [p1, p2].filter(p => p !== 0)
+          const ps = row.slice(1).filter(p => p !== 0)
           for (const p of ps) {
-            if (!Number.isInteger(p) || p < 1 || p >= i + 1) fail(`La actividad ${i + 1} tiene predecesora ${p}: debe ser un número entero de una actividad **anterior** (1 a ${i}), o 0 si no tiene.`)
+            if (!Number.isInteger(p) || p < 1 || p >= i + 1) fail(`La actividad ${i + 1} tiene predecesora ${p}: debe ser el número de renglón de una actividad **anterior** (1 a ${i}), o 0 si no tiene.`)
           }
           d.push(dur)
           preds.push([...new Set(ps)].map(p => p - 1))
-        }
+        })
         const ES = new Array(n).fill(0), EF = new Array(n).fill(0)
         for (let i = 0; i < n; i++) {
           ES[i] = preds[i].length ? Math.max(...preds[i].map(p => EF[p])) : 0

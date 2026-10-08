@@ -14,7 +14,9 @@ export const L = String.raw
 export type Row = [number, number, number]
 export type Pt = [number, number]
 
-export interface LPRow { a1: number; a2: number; b: number; /** número que el usuario le puso (1, 2, 3) */ i: number }
+/** op: −1 = ≤, 0 = =, 1 = ≥ */
+export type Op = -1 | 0 | 1
+export interface LPRow { a1: number; a2: number; b: number; op: Op; /** número que el usuario le puso (1, 2, 3) */ i: number }
 export interface LPProblem { sense: 'max' | 'min'; c: Pt; rows: LPRow[] }
 
 export interface LPVertex { name: string; x: Pt; z: number }
@@ -42,49 +44,72 @@ export function lin2(a1: number, a2: number): string {
   return terms.length ? terms.join('') : '0'
 }
 
-export const senseTex = (p: LPProblem) => (p.sense === 'max' ? L`\le` : L`\ge`)
-export const rowTex = (p: LPProblem, r: LPRow) => `${lin2(r.a1, r.a2)}${senseTex(p)}${fmt(r.b)}`
+export const opTex = (op: Op) => (op === -1 ? L`\le` : op === 0 ? '=' : L`\ge`)
+export const rowTex = (r: LPRow) => `${lin2(r.a1, r.a2)}${opTex(r.op)}${fmt(r.b)}`
 
 export function problemTex(p: LPProblem): string {
-  const rows = [...p.rows.map(r => rowTex(p, r)), L`x_1,x_2\ge0`]
+  const rows = [...p.rows.map(r => rowTex(r)), L`x_1,x_2\ge0`]
   return L`${'\\' + p.sense}\ Z=${lin2(p.c[0], p.c[1])}\quad\text{s.a.}\quad\begin{cases}${rows.join(L`\\`)}\end{cases}`
 }
 
 // ─── Lectura de entradas ─────────────────────────────────────────────────────
 
-export function lpInputs(prefix: string, c: number[], rows: number[][]) {
-  return [
-    { kind: 'vector' as const, id: `${prefix}.c`, label: 'Función objetivo: ⟨c₁, c₂⟩', symbol: 'Z', default: c, fixedDims: 2 },
-    ...rows.map((r, k) => ({
-      kind: 'vector' as const,
-      id: `${prefix}.r${k + 1}`,
-      label: `Restricción ${k + 1}: ⟨a₁, a₂, b⟩`,
-      symbol: `R_${k + 1}`,
-      default: r,
-      fixedDims: 3,
-    })),
-  ]
-}
+export const senseSelect = (id: string, def: 1 | -1) => ({
+  kind: 'select' as const,
+  id,
+  label: 'Objetivo',
+  symbol: 'Z',
+  default: def,
+  options: [{ value: 1, label: 'Maximizar' }, { value: -1, label: 'Minimizar' }],
+})
 
-export function readLP(v: Values, prefix: string, sense: 'max' | 'min'): LPProblem {
-  const g = (k: string) => v[`${prefix}.${k}`] as number[]
-  const c = g('c')
+/** Tabla de restricciones con dos variables: ⟨a₁, a₂⟩ sentido  lado derecho */
+export const lpMatrixInput = (id: string, rows: number[][]) => ({
+  kind: 'matrix' as const,
+  id,
+  label: 'Restricciones',
+  symbol: 'R',
+  default: rows,
+  rowPrefix: 'R',
+  colPrefix: 'x',
+  corner: '',
+  senseCol: true,
+  lastCol: 'Lado derecho',
+  fixedCols: true,
+  minRows: 1,
+  maxRows: 8,
+})
+
+export const lpInputs = (prefix: string, sense: 1 | -1, c: number[], rows: number[][]) => [
+  senseSelect(`${prefix}.sense`, sense),
+  { kind: 'vector' as const, id: `${prefix}.c`, label: 'Función objetivo: ⟨c₁, c₂⟩', symbol: 'Z', default: c, fixedDims: 2 },
+  lpMatrixInput(`${prefix}.rows`, rows),
+]
+
+export function readLP(v: Values, prefix: string): LPProblem {
+  const c = v[`${prefix}.c`] as number[]
+  const sense = (v[`${prefix}.sense`] as number) === -1 ? 'min' : 'max'
+  const table = v[`${prefix}.rows`] as number[][]
   const rows: LPRow[] = []
-  for (let i = 1; i <= 3; i++) {
-    const [a1, a2, b] = g(`r${i}`)
+  table.forEach((r, k) => {
+    const [a1, a2, op, b] = r
     if (a1 === 0 && a2 === 0) {
-      if (b === 0) continue // ⟨0, 0, 0⟩ = restricción sin usar
-      fail(`La restricción ${i} no tiene variables. Si no la quieres usar, escribe ⟨0, 0, 0⟩.`)
+      if (b === 0) return // renglón de ceros = restricción sin usar
+      fail(`La restricción R${k + 1} no tiene variables. Si no la quieres usar, déjala en ceros o quítala.`)
     }
-    rows.push({ a1, a2, b, i })
-  }
+    rows.push({ a1, a2, b, op: (op === 0 ? 0 : op < 0 ? -1 : 1) as Op, i: k + 1 })
+  })
   return { sense, c: [c[0], c[1]], rows }
 }
 
-/** Forma normal: todo ≤, más x₁ ≥ 0 y x₂ ≥ 0 */
+/** Forma normal: todo ≤ (un = son dos desigualdades), más x₁ ≥ 0 y x₂ ≥ 0 */
 export function normRows(p: LPProblem): Row[] {
-  const s = p.sense === 'max' ? 1 : -1
-  return [...p.rows.map(r => [s * r.a1, s * r.a2, s * r.b] as Row), [-1, 0, 0], [0, -1, 0]]
+  const out: Row[] = []
+  for (const r of p.rows) {
+    if (r.op <= 0) out.push([r.a1, r.a2, r.b])
+    if (r.op >= 0) out.push([-r.a1, -r.a2, -r.b])
+  }
+  return [...out, [-1, 0, 0], [0, -1, 0]]
 }
 
 export const normObjective = (p: LPProblem): Pt => (p.sense === 'max' ? p.c : [-p.c[0], -p.c[1]])
@@ -188,7 +213,7 @@ export function lpScene(p: LPProblem, sol: LPSolution, path?: { x: Pt; z: number
 
   const curves: PlotCurve[] = p.rows.flatMap((r, k) => {
     const seg = clipLine([r.a1, r.a2, r.b], X, Y)
-    return seg ? [{ points: seg, tone: TONES[k % 3], label: rowTex(p, r) }] : []
+    return seg ? [{ points: seg, tone: TONES[k % 3], label: rowTex(r) }] : []
   })
   const cm = p.c
   const z = sol.zStar

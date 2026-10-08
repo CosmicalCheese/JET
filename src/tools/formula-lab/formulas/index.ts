@@ -14,6 +14,7 @@ import { COLAS } from './colas'
 import { PROYECTOS } from './proyectos'
 import { DECISIONES } from './decisiones'
 import { MARKOV } from './markov'
+import { TRANSPORTE } from './transporte'
 
 export const AREAS: { id: AreaId; label: string }[] = [
   { id: 'matematicas', label: 'Matemáticas' },
@@ -41,6 +42,7 @@ export const CATEGORIES: Category[] = [
   { id: 'ondas', area: 'fisica', label: 'Ondas y óptica', description: 'Refracción y longitud de onda' },
   { id: 'fluidos', area: 'fisica', label: 'Mecánica de fluidos', description: 'Presión y flujo' },
   { id: 'programacion-lineal', area: 'operaciones', label: 'Programación lineal', description: 'Método gráfico y símplex' },
+  { id: 'transporte', area: 'operaciones', label: 'Transporte y asignación', description: 'Distribución al menor costo y asignación uno a uno' },
   { id: 'inventarios', area: 'operaciones', label: 'Inventarios', description: 'Cuánto y cuándo pedir' },
   { id: 'colas', area: 'operaciones', label: 'Teoría de colas', description: 'Filas, esperas y servidores' },
   { id: 'proyectos', area: 'operaciones', label: 'Proyectos (PERT/CPM)', description: 'Ruta crítica y plazos' },
@@ -55,7 +57,7 @@ export const CATEGORIES: Category[] = [
 export const FORMULAS: Formula[] = [
   ...ALGEBRA, ...TRIGONOMETRIA, ...VECTORES, ...DERIVADAS, ...INTEGRALES,
   ...PROBABILIDAD, ...ESTADISTICA, ...FISICA, ...QUIMICA,
-  ...PROGRAMACION_LINEAL, ...INVENTARIOS, ...COLAS, ...PROYECTOS, ...DECISIONES, ...MARKOV,
+  ...PROGRAMACION_LINEAL, ...INVENTARIOS, ...COLAS, ...PROYECTOS, ...DECISIONES, ...MARKOV, ...TRANSPORTE,
 ]
 
 const byId = new Map(FORMULAS.map(f => [f.id, f]))

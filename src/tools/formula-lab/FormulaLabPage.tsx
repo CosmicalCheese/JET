@@ -324,7 +324,7 @@ function Detail({ formula }: { formula: Formula }) {
 
 // ═══ Calculadora ═════════════════════════════════════════════════════════════
 
-type RawValue = string | string[] | [string, string][]
+type RawValue = string | string[] | [string, string][] | string[][]
 
 function toRaw(input: InputDef): RawValue {
   switch (input.kind) {
@@ -332,6 +332,8 @@ function toRaw(input: InputDef): RawValue {
     case 'vector': return input.default.map(String)
     case 'pairs': return input.default.map(([x, y]) => [String(x), String(y)] as [string, string])
     case 'list': return input.default.join(', ')
+    case 'matrix': return input.default.map(r => r.map(String))
+    case 'select': return String(input.default)
   }
 }
 
@@ -379,6 +381,16 @@ function parseValues(inputs: InputDef[], raw: Record<string, RawValue>): Values 
         const nums = parts.map(Number)
         if (nums.some(n => !Number.isFinite(n))) throw new Error(`Hay un valor inválido en “${input.label}”. Sepáralos con comas o espacios.`)
         out[input.id] = nums
+        break
+      }
+      case 'matrix': {
+        const rows = (r as string[][]).map(row => row.map(parseNum))
+        if (rows.some(row => row.some(c => !Number.isFinite(c)))) throw new Error(`Completa todas las casillas de “${input.label}” con números.`)
+        out[input.id] = rows
+        break
+      }
+      case 'select': {
+        out[input.id] = Number(r as string)
         break
       }
     }
@@ -593,6 +605,19 @@ function InputField({ input, value, onChange, onDims }: { input: InputDef; value
         </label>
       )
 
+    case 'select':
+      return (
+        <label className="block">
+          {label}
+          <select value={value as string} onChange={e => onChange(e.target.value)} className={inputClass}>
+            {input.options.map(o => <option key={o.value} value={String(o.value)}>{o.label}</option>)}
+          </select>
+        </label>
+      )
+
+    case 'matrix':
+      return <MatrixField input={input} label={label} value={value as string[][]} onChange={onChange} />
+
     case 'pairs': {
       const rows = value as [string, string][]
       const update = (i: number, col: 0 | 1, v: string) => onChange(rows.map((r, j): [string, string] => (j === i ? (col === 0 ? [v, r[1]] : [r[0], v]) : r)))
@@ -636,6 +661,114 @@ function InputField({ input, value, onChange, onDims }: { input: InputDef; value
       )
     }
   }
+}
+
+// ═══ Tabla editable ══════════════════════════════════════════════════════════
+
+const SENSE = [{ v: '-1', t: '≤' }, { v: '0', t: '=' }, { v: '1', t: '≥' }]
+
+function MatrixField({ input, label, value, onChange }: { input: Extract<InputDef, { kind: 'matrix' }>; label: React.ReactNode; value: string[][]; onChange: (v: string[][]) => void }) {
+  const m = value.length, n = value[0]?.length ?? 0
+  const hasLastRow = !!input.lastRow, hasLastCol = !!input.lastCol, hasSense = !!input.senseCol
+  const regRows = m - (hasLastRow ? 1 : 0)
+  const regCols = n - (hasLastCol ? 1 : 0) - (hasSense ? 1 : 0)
+  const senseAt = hasSense ? n - (hasLastCol ? 2 : 1) : -1
+  const minRows = input.minRows ?? 1, minCols = input.minCols ?? 1
+  const canRows = !input.fixedRows && !input.square && regRows < (input.maxRows ?? 12)
+  const canCols = !input.fixedCols && !input.square && regCols < (input.maxCols ?? 12)
+  const canSquare = !!input.square && regRows < (input.maxCols ?? 8)
+
+  // posición de inserción de una columna regular: antes del selector y de la última columna
+  const colInsert = regCols
+  const addRow = () => {
+    const blank = Array.from({ length: n }, (_, j) => (j === senseAt ? (value[regRows - 1]?.[j] ?? '-1') : '0'))
+    const next = [...value]
+    next.splice(regRows, 0, blank)
+    onChange(next)
+  }
+  const addCol = () => onChange(value.map(r => { const c = [...r]; c.splice(colInsert, 0, '0'); return c }))
+  const addBoth = () => {
+    const withCol = value.map(r => { const c = [...r]; c.splice(colInsert, 0, '0'); return c })
+    const blank = Array.from({ length: n + 1 }, () => '0')
+    withCol.splice(regRows, 0, blank)
+    onChange(withCol)
+  }
+  const delRow = (i: number) => onChange(value.filter((_, k) => k !== i))
+  const delCol = (j: number) => onChange(value.map(r => r.filter((_, k) => k !== j)))
+  const delBoth = (k: number) => onChange(value.filter((_, i) => i !== k).map(r => r.filter((_, j) => j !== k)))
+  const rowName = (i: number) => (hasLastRow && i === m - 1 ? input.lastRow! : `${input.rowPrefix ?? ''}${i + 1}`)
+  const colName = (j: number) => (input.colNames?.[j] ?? (hasLastCol && j === n - 1 ? input.lastCol! : j === senseAt ? '' : `${input.colPrefix ?? ''}${j + 1}`))
+  const setCell = (i: number, j: number, x: string) => onChange(value.map((r, a) => (a === i ? r.map((c, b) => (b === j ? x : c)) : r)))
+  const small = 'inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-blue-600'
+  const del = 'text-zinc-300 hover:text-red-400'
+
+  return (
+    <div className="sm:col-span-2 min-w-0">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        {label}
+        <div className="flex gap-3 mb-1">
+          {canRows && <button onClick={addRow} className={small}><Plus size={12} /> Fila</button>}
+          {canCols && <button onClick={addCol} className={small}><Plus size={12} /> Columna</button>}
+          {canSquare && <button onClick={addBoth} className={small}><Plus size={12} /> Estado</button>}
+        </div>
+      </div>
+      <div className="overflow-x-auto rounded border border-zinc-100">
+        <table className="text-sm">
+          <thead className="bg-zinc-50">
+            <tr>
+              <th className="px-2 py-1 text-[11px] font-semibold text-zinc-400 text-left whitespace-nowrap">{input.corner ?? ''}</th>
+              {Array.from({ length: n }, (_, j) => {
+                const removable = !input.fixedCols && j < regCols && regCols > (input.square ? Math.max(minCols, 2) : minCols)
+                return (
+                  <th key={j} className="px-1 py-1 text-[11px] font-semibold text-blue-600 whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1">
+                      {colName(j)}
+                      {removable && <button onClick={() => (input.square ? delBoth(j) : delCol(j))} className={del} aria-label={`Quitar columna ${j + 1}`}><Trash2 size={10} /></button>}
+                    </span>
+                  </th>
+                )
+              })}
+              <th className="w-5" />
+            </tr>
+          </thead>
+          <tbody>
+            {value.map((row, i) => {
+              const special = hasLastRow && i === m - 1
+              const removable = !special && !input.fixedRows && !input.square && regRows > minRows
+              return (
+                <tr key={i} className={cn('border-t border-zinc-100', special && 'bg-amber-50/50')}>
+                  <td className="px-2 py-1 text-[11px] font-semibold text-emerald-600 whitespace-nowrap">{rowName(i)}</td>
+                  {row.map((c, j) => (
+                    <td key={j} className={cn('px-1 py-1', hasLastCol && j === n - 1 && 'bg-amber-50/50')}>
+                      {hasLastRow && hasLastCol && special && j === n - 1 ? (
+                        <span className="block text-center text-zinc-300">—</span>
+                      ) : j === senseAt ? (
+                        <select value={c} onChange={e => setCell(i, j, e.target.value)} disabled={special} className={cn(inputClass, 'w-14 px-1 text-center', special && 'opacity-30')} aria-label={`Sentido de la restricción ${i + 1}`}>
+                          {SENSE.map(o => <option key={o.v} value={o.v}>{o.t}</option>)}
+                        </select>
+                      ) : (
+                        <input
+                          value={c}
+                          onChange={e => setCell(i, j, e.target.value)}
+                          inputMode="decimal"
+                          aria-label={`${rowName(i)}, ${colName(j) || 'sentido'}`}
+                          className={cn(inputClass, 'w-16 text-center px-1')}
+                        />
+                      )}
+                    </td>
+                  ))}
+                  <td className="px-1 text-center">
+                    {removable && <button onClick={() => delRow(i)} className={del} aria-label={`Quitar fila ${i + 1}`}><Trash2 size={12} /></button>}
+                    {input.square && !special && regRows > Math.max(minRows, 2) && <button onClick={() => delBoth(i)} className={del} aria-label={`Quitar estado ${i + 1}`}><Trash2 size={12} /></button>}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
 }
 
 // ═══ Piezas de presentación ══════════════════════════════════════════════════

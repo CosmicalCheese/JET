@@ -30,6 +30,7 @@ export type CategoryId =
   | 'electroquimica'
   | 'termoquimica'
   | 'programacion-lineal'
+  | 'transporte'
   | 'inventarios'
   | 'colas'
   | 'proyectos'
@@ -78,9 +79,44 @@ export interface ListInput extends InputBase {
   default: number[]
 }
 
-export type InputDef = NumberInput | VectorInput | PairsInput | ListInput
+/**
+ * Tabla editable de números. El usuario puede agregar y quitar renglones y columnas,
+ * así que los problemas no tienen un tamaño fijo (transporte, asignación, símplex…).
+ */
+export interface MatrixInput extends InputBase {
+  kind: 'matrix'
+  default: number[][]
+  /** Prefijos para numerar renglones y columnas: 'O' → O1, O2… */
+  rowPrefix?: string
+  colPrefix?: string
+  /** Encabezados fijos de las columnas (en lugar de numerarlas) */
+  colNames?: string[]
+  /** Texto de la esquina superior izquierda */
+  corner?: string
+  /** El último renglón / la última columna son especiales (p. ej. Demanda, Oferta, Lado derecho) */
+  lastRow?: string
+  lastCol?: string
+  /** La penúltima columna es un selector de sentido: ≤ (−1), = (0), ≥ (1) */
+  senseCol?: boolean
+  /** Siempre n×n: agregar un renglón agrega también una columna */
+  square?: boolean
+  fixedRows?: boolean
+  fixedCols?: boolean
+  minRows?: number
+  minCols?: number
+  maxRows?: number
+  maxCols?: number
+}
 
-export type InputValue = number | number[] | [number, number][]
+export interface SelectInput extends InputBase {
+  kind: 'select'
+  default: number
+  options: { value: number; label: string }[]
+}
+
+export type InputDef = NumberInput | VectorInput | PairsInput | ListInput | MatrixInput | SelectInput
+
+export type InputValue = number | number[] | [number, number][] | number[][]
 export type Values = Record<string, InputValue>
 
 // ─── Engine output ───────────────────────────────────────────────────────────
@@ -189,6 +225,7 @@ export const num = (v: Values, k: string) => v[k] as number
 export const vec = (v: Values, k: string) => v[k] as number[]
 export const pairs = (v: Values, k: string) => v[k] as [number, number][]
 export const list = (v: Values, k: string) => v[k] as number[]
+export const mat = (v: Values, k: string) => v[k] as number[][]
 
 export function fail(msg: string): never {
   throw new Error(msg)
