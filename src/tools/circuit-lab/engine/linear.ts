@@ -35,7 +35,11 @@ export function solveLinear(A: DenseMatrix, b: ArrayLike<number>): Float64Array 
 
   let scale = 0
   for (let i = 0; i < m.length; i++) scale = Math.max(scale, Math.abs(m[i]))
-  const tolerance = (scale || 1) * 1e-13
+  // Muy estricto a propósito: los casos singulares "de verdad" (lazos de fuentes,
+  // nodos sin conexión) ya se detectan antes por topología. Aquí solo queremos
+  // atrapar ceros exactos, no pivotes pequeños pero legítimos (diodos apagados
+  // junto a capacitores con pasos de tiempo cortos).
+  const tolerance = (scale || 1) * 1e-17
 
   for (let k = 0; k < n; k++) {
     let pivot = k

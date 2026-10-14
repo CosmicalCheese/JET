@@ -33,7 +33,7 @@ export class UnionFind {
   }
 }
 
-const GROUND_KEY = 'gnd'
+export const GROUND_KEY = 'gnd'
 
 export function terminalKey(component: string, terminal: number): string {
   return `c:${component}:${terminal}`

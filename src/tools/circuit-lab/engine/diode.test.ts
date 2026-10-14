@@ -42,8 +42,8 @@ test('diodo en directa: ~0.7 V y el resto cae en la resistencia', () => {
 
 test('diodo en inversa: bloquea (corriente prácticamente 0)', () => {
   const s = solved(series(5, 1000, { id: 'D1', kind: 'diode' }, true))
-  assert.ok(Math.abs(s.components.D1.current) < 1e-9, `I = ${s.components.D1.current}`)
-  assert.ok(Math.abs(s.components.D1.voltage + 5) < 1e-6, 'todo el voltaje queda en el diodo')
+  assert.ok(Math.abs(s.components.D1.current) < 1e-8, `I = ${s.components.D1.current}`)
+  assert.ok(Math.abs(s.components.D1.voltage + 5) < 1e-4, 'todo el voltaje queda en el diodo')
 })
 
 test('converge aunque el voltaje sea muy alto (limitación de pasos)', () => {

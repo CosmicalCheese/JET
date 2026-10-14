@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { solveDC } from './engine/dc.ts'
-import { isReactive, transientStep } from './engine/transient.ts'
+import { isDynamic, transientStep } from './engine/transient.ts'
 import type { Circuit, DCResult, ReactiveState } from './engine/types.ts'
 
 /** Pasos de integración por cuadro de animación. */
@@ -19,7 +19,7 @@ export interface Simulation {
   /** Tiempo simulado, en s. */
   time: number
   samples: Sample[]
-  /** Hay algo que depende del tiempo (capacitores, bobinas o gráficas). */
+  /** Hay algo que depende del tiempo (capacitores, bobinas, fuentes AC o gráficas). */
   active: boolean
   running: boolean
   setRunning: (running: boolean) => void
@@ -35,12 +35,12 @@ interface Frame {
 
 /**
  * Corre el circuito en el tiempo. `timescale` = segundos simulados por cada
- * segundo real. Sin capacitores, bobinas ni gráficas no hay nada que animar
+ * segundo real. Sin capacitores, bobinas, fuentes AC ni gráficas no hay nada que animar
  * y se resuelve una sola vez en DC.
  */
 export function useSimulation(circuit: Circuit, timescale: number, traces: string[]): Simulation {
-  const reactive = useMemo(() => circuit.components.some(isReactive), [circuit])
-  const active = reactive || traces.length > 0
+  const dynamic = useMemo(() => circuit.components.some(isDynamic), [circuit])
+  const active = dynamic || traces.length > 0
   const dcResult = useMemo(() => (active ? null : solveDC(circuit)), [active, circuit])
 
   const [running, setRunning] = useState(true)
@@ -71,7 +71,7 @@ export function useSimulation(circuit: Circuit, timescale: number, traces: strin
       let result: DCResult | null = null
       if (run) {
         for (let k = 0; k < SUBSTEPS; k++) {
-          const step = transientStep(c, s.state, dt)
+          const step = transientStep(c, s.state, dt, s.time + dt)
           result = step.result
           if (!result.ok) break
           s.state = step.state
@@ -88,7 +88,7 @@ export function useSimulation(circuit: Circuit, timescale: number, traces: strin
         }
       } else if (s.shown !== c) {
         // En pausa solo se recalcula si cambió el circuito (para ver el efecto de una edición).
-        result = transientStep(c, s.state, dt).result
+        result = transientStep(c, s.state, dt, s.time).result
       }
       if (result) {
         s.shown = c

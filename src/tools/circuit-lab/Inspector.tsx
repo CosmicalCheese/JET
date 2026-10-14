@@ -9,6 +9,7 @@ import { isReactive } from './engine/transient.ts'
 import { keyOf, type CircuitDoc, type Placed, type Translation } from './editor/model.ts'
 import { KIND_LABEL, LED_NAME } from './editor/labels.ts'
 import { LED_VF } from './engine/diode.ts'
+import { TERMINAL_COUNT } from './engine/types.ts'
 import type { LedColor } from './engine/types.ts'
 import { formatSI, parseSI } from './editor/units.ts'
 import type { Selection } from './editor/CircuitCanvas.tsx'
@@ -104,6 +105,47 @@ function ComponentPanel({ c, circuit, result, onChange, onDelete, traced, onTogg
           </select>
         </label>
       )}
+      {c.kind === 'ac-source' && (
+        <>
+          <ValueEditor label="Amplitud (pico)" unit="V" value={c.amplitude}
+            slider={{ min: 0, max: 50, step: 0.5 }}
+            onChange={(amplitude) => onChange({ ...c, amplitude }, `${c.id}.amp`)} />
+          <ValueEditor label="Frecuencia" unit="Hz" value={c.frequency} positive
+            slider={{ min: -1, max: 5, step: 0.01, toSlider: Math.log10, fromSlider: (s) => Number((10 ** s).toPrecision(3)) }}
+            onChange={(frequency) => onChange({ ...c, frequency }, `${c.id}.freq`)} />
+          <ValueEditor label="Offset (componente DC)" unit="V" value={c.offset}
+            slider={{ min: -20, max: 20, step: 0.5 }}
+            onChange={(offset) => onChange({ ...c, offset }, `${c.id}.offset`)} />
+        </>
+      )}
+      {c.kind === 'bjt' && (
+        <>
+          <Choice label="Tipo" value={c.polarity}
+            options={[['npn', 'NPN (la corriente entra por el colector)'], ['pnp', 'PNP (la corriente sale por el colector)']]}
+            onChange={(polarity) => onChange({ ...c, polarity })} />
+          <ValueEditor label="Ganancia β" unit="" value={c.beta} positive
+            slider={{ min: 10, max: 500, step: 5 }}
+            onChange={(beta) => onChange({ ...c, beta }, `${c.id}.beta`)} />
+        </>
+      )}
+      {c.kind === 'mosfet' && (
+        <>
+          <Choice label="Tipo" value={c.polarity}
+            options={[['n', 'Canal N (enciende con V_GS positivo)'], ['p', 'Canal P (enciende con V_GS negativo)']]}
+            onChange={(polarity) => onChange({ ...c, polarity })} />
+          <ValueEditor label="Voltaje de umbral |V_th|" unit="V" value={c.threshold} positive
+            slider={{ min: 0.5, max: 5, step: 0.1 }}
+            onChange={(threshold) => onChange({ ...c, threshold }, `${c.id}.vth`)} />
+          <ValueEditor label="k (transconductancia)" unit="A/V²" value={c.k} positive
+            slider={{ min: -3, max: 0, step: 0.01, toSlider: Math.log10, fromSlider: (s) => Number((10 ** s).toPrecision(3)) }}
+            onChange={(k) => onChange({ ...c, k }, `${c.id}.k`)} />
+        </>
+      )}
+      {c.kind === 'opamp' && (
+        <ValueEditor label="Saturación (alimentación ±)" unit="V" value={c.saturation} positive
+          slider={{ min: 1, max: 20, step: 0.5 }}
+          onChange={(saturation) => onChange({ ...c, saturation }, `${c.id}.sat`)} />
+      )}
       {c.kind === 'zener' && (
         <ValueEditor label="Voltaje Zener" unit="V" value={c.zenerVoltage} positive
           slider={{ min: 1, max: 30, step: 0.1 }}
@@ -137,9 +179,102 @@ function ComponentPanel({ c, circuit, result, onChange, onDelete, traced, onTogg
         </button>
       )}
 
-      {state && <Readouts c={c} state={state} />}
+      {state && result.ok && (TERMINAL_COUNT[c.kind] === 3
+        ? <TripleReadouts c={c} state={state} solution={result} />
+        : <Readouts c={c} state={state} />)}
       {state && result.ok && <Explanation c={c} state={state} circuit={circuit} solution={result} />}
     </div>
+  )
+}
+
+// ─── Transistores y op-amp ───────────────────────────────────────────────────
+
+const terminalV = (c: Placed, sol: DCSolution) => sol.terminalNets[c.id].map((n) => sol.netVoltages[n])
+
+type BjtRegion = 'corte' | 'activa' | 'saturación'
+type MosRegion = 'corte' | 'óhmica' | 'saturación'
+
+/** Voltajes y corrientes "como si fuera NPN / canal N" (en PNP / canal P se invierten los signos). */
+function bjtOperating(c: Extract<Placed, { kind: 'bjt' }>, state: ComponentState, sol: DCSolution) {
+  const s = c.polarity === 'npn' ? 1 : -1
+  const [vc, vb, ve] = terminalV(c, sol)
+  const [ic, ib] = state.terminalCurrents.map((i) => s * i)
+  const vbe = s * (vb - ve)
+  const vbc = s * (vb - vc)
+  const vce = s * (vc - ve)
+  const region: BjtRegion = vbe < 0.5 || ib < 1e-9 ? 'corte' : vbc > 0.4 ? 'saturación' : 'activa'
+  return { vbe, vce, ic, ib, region }
+}
+
+function mosOperating(c: Extract<Placed, { kind: 'mosfet' }>, state: ComponentState, sol: DCSolution) {
+  const s = c.polarity === 'n' ? 1 : -1
+  const [vd, vg, vs] = terminalV(c, sol)
+  const vgs = s * (vg - vs)
+  const vds = s * (vd - vs)
+  const id = s * state.terminalCurrents[0]
+  const region: MosRegion = vgs <= c.threshold ? 'corte' : vds < vgs - c.threshold ? 'óhmica' : 'saturación'
+  return { vgs, vds, id, region }
+}
+
+function TripleReadouts({ c, state, solution }: { c: Placed; state: ComponentState; solution: DCSolution }) {
+  const rows: [string, string][] = []
+  if (c.kind === 'bjt') {
+    const o = bjtOperating(c, state, solution)
+    const sign = c.polarity === 'pnp' ? 'E' : ''
+    rows.push(
+      ['Zona', o.region],
+      [sign ? 'V_EB' : 'V_BE', formatSI(o.vbe, 'V')],
+      [sign ? 'V_EC' : 'V_CE', formatSI(o.vce, 'V')],
+      ['I_B', formatSI(o.ib, 'A')],
+      ['I_C', formatSI(o.ic, 'A')],
+      ['I_C / I_B', o.ib > 1e-12 ? (o.ic / o.ib).toFixed(1) : '—'],
+    )
+  } else if (c.kind === 'mosfet') {
+    const o = mosOperating(c, state, solution)
+    const p = c.polarity === 'p'
+    rows.push(
+      ['Zona', o.region === 'óhmica' ? 'óhmica (triodo)' : o.region],
+      [p ? 'V_SG' : 'V_GS', formatSI(o.vgs, 'V')],
+      [p ? 'V_SD' : 'V_DS', formatSI(o.vds, 'V')],
+      ['I_D', formatSI(o.id, 'A')],
+      ['Corriente de compuerta', '0 A'],
+    )
+  } else if (c.kind === 'opamp') {
+    const [vp, vn, vo] = terminalV(c, solution)
+    rows.push(
+      ['V+', formatSI(vp, 'V')],
+      ['V−', formatSI(vn, 'V')],
+      ['V+ − V−', formatSI(vp - vn, 'V')],
+      ['Salida', formatSI(vo, 'V')],
+      ['Corriente de salida', formatSI(state.current, 'A')],
+    )
+  }
+  return (
+    <dl className="rounded-xl border border-zinc-200 bg-white divide-y divide-zinc-100">
+      {rows.map(([k, v]) => (
+        <div key={k} className="flex items-baseline justify-between px-3 py-2">
+          <dt className="text-xs text-zinc-500">{k}</dt>
+          <dd className="text-sm font-semibold text-zinc-900 tabular-nums">{v}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
+function Choice<T extends string>({ label, value, options, onChange }: {
+  label: string
+  value: T
+  options: [T, string][]
+  onChange: (v: T) => void
+}) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="block text-xs font-medium text-zinc-500">{label}</span>
+      <select value={value} onChange={(e) => onChange(e.target.value as T)}
+        className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm">
+        {options.map(([v, text]) => <option key={v} value={v}>{text}</option>)}
+      </select>
+    </label>
   )
 }
 
@@ -160,6 +295,10 @@ function Readouts({ c, state }: { c: Placed; state: ComponentState }) {
       rows.push(['Energía  ½CV²', formatSI(0.5 * c.capacitance * state.voltage ** 2, 'J')])
     }
     if (c.kind === 'inductor') rows.push(['Energía  ½LI²', formatSI(0.5 * c.inductance * state.current ** 2, 'J')])
+    if (c.kind === 'ac-source') {
+      rows.push(['V eficaz (rms)', formatSI(c.amplitude / Math.SQRT2, 'V')])
+      rows.push(['Periodo', formatSI(1 / c.frequency, 's')])
+    }
     if (c.kind === 'led') rows.push(['Brillo', `${Math.round(100 * Math.min(1, Math.max(0, state.current) / 0.02))} %`])
   }
   return (
@@ -233,6 +372,98 @@ function ParallelExplanation({ id, circuit, solution }: { id: string; circuit: C
         <FormulaLink id="leyes-de-kirchhoff" label="Kirchhoff" />
       </div>
     </div>
+  )
+}
+
+function BjtExplanation({ c, state, solution }: { c: Extract<Placed, { kind: 'bjt' }>; state: ComponentState; solution: DCSolution }) {
+  const o = bjtOperating(c, state, solution)
+  return (
+    <>
+      {o.region === 'activa' && (
+        <>
+          <p>
+            <strong>Zona activa: amplifica.</strong> Una corriente pequeña en la base controla una {Math.round(c.beta)} veces
+            mayor en el colector:
+          </p>
+          <Tex display latex={`I_C = \\beta\\,I_B = ${c.beta}\\cdot ${siTex(o.ib, 'A')} \\approx ${siTex(o.ic, 'A')}`} />
+          <p>La unión base-emisor conduce como un diodo: V<sub>BE</sub> ≈ 0.7 V.</p>
+        </>
+      )}
+      {o.region === 'saturación' && (
+        <p>
+          <strong>Saturado: interruptor cerrado.</strong> La base pide β·I<sub>B</sub> = {formatSI(c.beta * o.ib, 'A')} de
+          colector, pero el circuito solo puede dar {formatSI(o.ic, 'A')}. El transistor “se abre todo” y
+          V<sub>CE</sub> cae a {formatSI(o.vce, 'V')}. Así se usa para encender LEDs, relevadores o motores.
+        </p>
+      )}
+      {o.region === 'corte' && (
+        <p>
+          <strong>En corte: interruptor abierto.</strong> Sin corriente de base (V<sub>BE</sub> = {formatSI(o.vbe, 'V')}{' '}
+          no llega a ~0.6 V) no pasa corriente de colector.
+        </p>
+      )}
+      <FormulaLink id="transistor-bjt" label="Transistor BJT" />
+    </>
+  )
+}
+
+function MosExplanation({ c, state, solution }: { c: Extract<Placed, { kind: 'mosfet' }>; state: ComponentState; solution: DCSolution }) {
+  const o = mosOperating(c, state, solution)
+  const vgs = c.polarity === 'p' ? 'V_{SG}' : 'V_{GS}'
+  return (
+    <>
+      <p>Se controla con <strong>voltaje</strong>: la compuerta está aislada y no toma corriente (a diferencia del BJT).</p>
+      {o.region === 'corte' && (
+        <p>
+          <strong>En corte: interruptor abierto.</strong> |V<sub>GS</sub>| = {formatSI(o.vgs, 'V')} no llega al umbral
+          V<sub>th</sub> = {formatSI(c.threshold, 'V')}: no se forma el canal.
+        </p>
+      )}
+      {o.region === 'saturación' && (
+        <>
+          <p><strong>Saturación:</strong> la corriente depende de V<sub>GS</sub> y casi no de V<sub>DS</sub> (zona para amplificar):</p>
+          <Tex display latex={`I_D = \\tfrac{k}{2}(${vgs} - V_{th})^2 = \\tfrac{${c.k}}{2}(${o.vgs.toFixed(2)} - ${c.threshold})^2 \\approx ${siTex(o.id, 'A')}`} />
+        </>
+      )}
+      {o.region === 'óhmica' && (
+        <p>
+          <strong>Zona óhmica: interruptor cerrado.</strong> El canal está bien formado y se comporta como una resistencia
+          pequeña: R<sub>DS</sub> = V<sub>DS</sub>/I<sub>D</sub> ≈ {o.id > 1e-12 ? formatSI(o.vds / o.id, 'Ω') : '—'}.
+        </p>
+      )}
+      <FormulaLink id="mosfet" label="MOSFET" />
+    </>
+  )
+}
+
+function OpAmpExplanation({ c, state, solution }: { c: Extract<Placed, { kind: 'opamp' }>; state: ComponentState; solution: DCSolution }) {
+  const [vp, vn, vo] = terminalV(c, solution)
+  const saturated = Math.abs(vo) > 0.98 * c.saturation
+  return (
+    <>
+      <Tex display latex={`V_{out} = A\\,(V_+ - V_-),\\qquad A = 10^5`} />
+      {saturated ? (
+        <p>
+          <strong>Saturado en {formatSI(vo, 'V')}:</strong> la diferencia entre entradas ({formatSI(vp - vn, 'V')}) es
+          demasiado grande. Sin retroalimentación negativa funciona como <strong>comparador</strong>: la salida se va al
+          máximo del lado de la entrada mayor.
+        </p>
+      ) : (
+        <>
+          <p>
+            Con retroalimentación negativa (salida conectada a la entrada −) la ganancia enorme obliga a que se cumplan
+            las <strong>reglas de oro</strong>:
+          </p>
+          <ol className="list-decimal pl-5 space-y-1">
+            <li>V<sub>+</sub> ≈ V<sub>−</sub> (aquí difieren {formatSI(vp - vn, 'V')}).</li>
+            <li>Las entradas no toman corriente.</li>
+          </ol>
+          <p className="text-xs text-zinc-500">Con esas dos reglas se analiza cualquier amplificador con Ohm y Kirchhoff.</p>
+        </>
+      )}
+      <p className="text-xs text-zinc-500">Corriente que entrega la salida: {formatSI(state.current, 'A')}.</p>
+      <FormulaLink id="amplificador-operacional" label="Amplificador operacional" />
+    </>
   )
 }
 
@@ -371,6 +602,25 @@ function Explanation({ c, state, circuit, solution }: {
           <ParallelExplanation id={c.id} circuit={circuit} solution={solution} />
         </>,
       )
+    case 'ac-source':
+      return box(
+        <>
+          <p>Su voltaje sube y baja como una senoide: cambia de sentido {(2 * c.frequency).toLocaleString('es-MX')} veces por segundo.</p>
+          <Tex display latex={`V(t) = ${c.offset ? `${siTex(c.offset, 'V')} + ` : ''}${siTex(c.amplitude, 'V')}\\,\\sin(2\\pi\\cdot ${siTex(c.frequency, 'Hz')}\\cdot t)`} />
+          <Tex display latex={`V_{rms} = \\frac{V_p}{\\sqrt 2} = ${siTex(c.amplitude / Math.SQRT2, 'V')},\\quad T = \\frac{1}{f} = ${siTex(1 / c.frequency, 's')}`} />
+          <p className="text-xs text-zinc-500">
+            V<sub>rms</sub> es el voltaje DC que calentaría igual una resistencia: por eso un enchufe “de 127 V” tiene
+            picos de 180 V.
+          </p>
+          <FormulaLink id="corriente-alterna" label="Corriente alterna" />
+        </>,
+      )
+    case 'bjt':
+      return box(<BjtExplanation c={c} state={state} solution={solution} />)
+    case 'mosfet':
+      return box(<MosExplanation c={c} state={state} solution={solution} />)
+    case 'opamp':
+      return box(<OpAmpExplanation c={c} state={state} solution={solution} />)
     case 'diode':
     case 'led':
     case 'zener':

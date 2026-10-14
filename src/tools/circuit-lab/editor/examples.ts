@@ -3,7 +3,7 @@
  * con el + arriba; una resistencia con rot 1 tiene el terminal 0 arriba.
  */
 
-import { createComponent, polyline, type CircuitDoc } from './model.ts'
+import { createComponent, polyline, type CircuitDoc, type Placed } from './model.ts'
 
 function counter() {
   let n = 0
@@ -203,6 +203,122 @@ function zener(): CircuitDoc {
   }
 }
 
+function set<K extends Placed['kind']>(c: Placed, kind: K, patch: Partial<Extract<Placed, { kind: K }>>): Placed {
+  return c.kind === kind ? ({ ...c, ...patch } as Placed) : c
+}
+
+function halfWave(): CircuitDoc {
+  const w = counter()
+  return {
+    version: 1,
+    components: [
+      set(createComponent('ac-source', 'V1', { x: 0, y: 0 }, 1), 'ac-source', { amplitude: 10, frequency: 60 }),
+      createComponent('diode', 'D1', { x: 5, y: -4 }, 0),
+      createComponent('resistor', 'RL', { x: 10, y: 0 }, 1),
+      createComponent('ground', 'GND1', { x: 0, y: 4 }),
+    ],
+    wires: [
+      ...polyline(w, [0, -2], [0, -4], [3, -4]),
+      ...polyline(w, [7, -4], [10, -4], [10, -2]),
+      ...polyline(w, [10, 2], [10, 4], [0, 4], [0, 2]),
+    ],
+  }
+}
+
+/**
+ * Puente de diodos: D1 y D2 llevan los dos lados de la fuente al + de la
+ * carga; D3 y D4 regresan desde GND. S1 conecta el capacitor de filtro.
+ */
+function fullWave(): CircuitDoc {
+  const w = counter()
+  return {
+    version: 1,
+    components: [
+      set(createComponent('ac-source', 'V1', { x: 0, y: 0 }, 1), 'ac-source', { amplitude: 12, frequency: 60 }),
+      createComponent('diode', 'D1', { x: 6, y: -6 }, 0),
+      createComponent('diode', 'D3', { x: 6, y: -2 }, 2),
+      createComponent('diode', 'D4', { x: 6, y: 2 }, 2),
+      createComponent('diode', 'D2', { x: 6, y: 6 }, 0),
+      createComponent('resistor', 'RL', { x: 16, y: 0 }, 1),
+      set(createComponent('switch', 'S1', { x: 20, y: -6 }, 0), 'switch', { closed: false }),
+      set(createComponent('capacitor', 'C1', { x: 24, y: 0 }, 1), 'capacitor', { capacitance: 470e-6 }),
+      createComponent('ground', 'GND1', { x: 16, y: 4 }),
+    ],
+    wires: [
+      ...polyline(w, [0, -2], [0, -6], [4, -6]),
+      ...polyline(w, [4, -6], [4, -2]),
+      ...polyline(w, [0, 2], [0, 6], [4, 6]),
+      ...polyline(w, [4, 2], [4, 6]),
+      ...polyline(w, [8, -6], [16, -6], [16, -2]),
+      ...polyline(w, [8, 6], [12, 6], [12, -6]),
+      ...polyline(w, [8, -2], [8, 2], [16, 2]),
+      ...polyline(w, [16, 2], [16, 4]),
+      ...polyline(w, [16, -6], [18, -6]),
+      ...polyline(w, [22, -6], [24, -6], [24, -2]),
+      ...polyline(w, [24, 2], [24, 4], [16, 4]),
+    ],
+  }
+}
+
+/** Transistor como interruptor: S1 da corriente de base y el LED enciende. */
+function transistorSwitch(kind: 'bjt' | 'mosfet'): CircuitDoc {
+  const w = counter()
+  const Q = kind === 'bjt'
+    ? createComponent('bjt', 'Q1', { x: 11, y: 7 }, 0)
+    : createComponent('mosfet', 'M1', { x: 11, y: 7 }, 0)
+  const base = kind === 'bjt'
+    ? [set(createComponent('resistor', 'RB', { x: 6, y: 7 }, 0), 'resistor', { resistance: 10e3 })]
+    // Resistencia pull-down: con S1 abierto descarga la compuerta y el MOSFET se apaga.
+    : [set(createComponent('resistor', 'RG', { x: 6, y: 9 }, 1), 'resistor', { resistance: 100e3 })]
+  return {
+    version: 1,
+    components: [
+      createComponent('voltage-source', 'V1', { x: 0, y: 0 }, 1),
+      set(createComponent('resistor', 'RC', { x: 12, y: -4 }, 1), 'resistor', { resistance: 330 }),
+      set(createComponent('led', 'LED1', { x: 12, y: 2 }, 1), 'led', { color: 'green' }),
+      Q,
+      ...base,
+      set(createComponent('switch', 'S1', { x: 3, y: 2 }, 1), 'switch', { closed: false }),
+      createComponent('ground', 'GND1', { x: 0, y: 12 }),
+    ],
+    wires: [
+      ...polyline(w, [0, -2], [0, -6], [12, -6]),
+      ...polyline(w, [12, -2], [12, 0]),
+      ...polyline(w, [12, 4], [12, 5]),
+      ...polyline(w, [3, 0], [3, -6]),
+      ...(kind === 'bjt'
+        ? [...polyline(w, [3, 4], [3, 7], [4, 7]), ...polyline(w, [8, 7], [9, 7])]
+        : [...polyline(w, [3, 4], [3, 7], [9, 7]), ...polyline(w, [6, 11], [6, 12])]),
+      ...polyline(w, [12, 9], [12, 12], [0, 12], [0, 2]),
+    ],
+  }
+}
+
+/** Amplificador inversor: ganancia −RF/RIN = −10, con una señal AC de entrada. */
+function invertingAmp(): CircuitDoc {
+  const w = counter()
+  return {
+    version: 1,
+    components: [
+      set(createComponent('ac-source', 'V1', { x: 0, y: 2 }, 1), 'ac-source', { amplitude: 0.5, frequency: 100 }),
+      createComponent('resistor', 'RIN', { x: 8, y: 0 }, 0),
+      set(createComponent('resistor', 'RF', { x: 14, y: -4 }, 0), 'resistor', { resistance: 10e3 }),
+      createComponent('opamp', 'U1', { x: 14, y: 1 }, 0),
+      set(createComponent('resistor', 'RL', { x: 22, y: 3 }, 1), 'resistor', { resistance: 10e3 }),
+      createComponent('ground', 'GND1', { x: 0, y: 6 }),
+    ],
+    wires: [
+      ...polyline(w, [0, 0], [6, 0]),
+      ...polyline(w, [10, 0], [12, 0]),
+      ...polyline(w, [12, 0], [12, -4]),
+      ...polyline(w, [16, -4], [18, -4], [18, 1]),
+      ...polyline(w, [16, 1], [22, 1]),
+      ...polyline(w, [12, 2], [12, 6]),
+      ...polyline(w, [0, 4], [0, 6], [22, 6], [22, 5]),
+    ],
+  }
+}
+
 export interface Example {
   id: string
   name: string
@@ -224,6 +340,28 @@ export const EXAMPLES: Example[] = [
   {
     id: 'zener', name: 'Regulador Zener',
     description: 'La carga recibe ≈ 5.1 V aunque cambies V1: el Zener absorbe la diferencia.', build: zener,
+  },
+  {
+    id: 'media-onda', name: 'Rectificador de media onda',
+    description: 'El diodo deja pasar solo los semiciclos positivos de la AC.', build: halfWave, traces: ['V1', 'RL'],
+  },
+  {
+    id: 'onda-completa', name: 'Rectificador de onda completa (puente)',
+    description: 'Los dos semiciclos llegan positivos a la carga. Cierra S1 para filtrar con el capacitor.',
+    build: fullWave, traces: ['V1', 'RL'],
+  },
+  {
+    id: 'bjt', name: 'Transistor BJT como interruptor',
+    description: 'Cierra S1: una corriente de base pequeña enciende el LED.', build: () => transistorSwitch('bjt'),
+  },
+  {
+    id: 'mosfet', name: 'MOSFET como interruptor',
+    description: 'Cierra S1: el voltaje en la compuerta enciende el LED sin tomar corriente.', build: () => transistorSwitch('mosfet'),
+  },
+  {
+    id: 'inversor', name: 'Amplificador inversor (op-amp)',
+    description: 'Ganancia −RF/RIN = −10: la salida es la entrada invertida y 10 veces mayor.',
+    build: invertingAmp, traces: ['V1', 'U1'],
   },
   {
     id: 'rc', name: 'Carga y descarga de un capacitor',

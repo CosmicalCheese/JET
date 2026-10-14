@@ -23,8 +23,8 @@ import { formatSI } from './editor/units.ts'
 
 const STORAGE_KEY = 'jet-circuit-lab'
 const PALETTE: ComponentKind[] = [
-  'voltage-source', 'resistor', 'capacitor', 'inductor', 'diode', 'led', 'zener',
-  'ground', 'switch', 'ammeter', 'voltmeter', 'current-source',
+  'voltage-source', 'ac-source', 'resistor', 'capacitor', 'inductor', 'diode', 'led', 'zener',
+  'bjt', 'mosfet', 'opamp', 'ground', 'switch', 'ammeter', 'voltmeter', 'current-source',
 ]
 
 /** Velocidades: segundos simulados por cada segundo real. */
@@ -113,13 +113,13 @@ export function CircuitLabPage() {
   // ─── Simulación ────────────────────────────────────────────────────────────
   const translation = useMemo(() => toCircuit(doc), [doc])
 
-  // Velocidad automática: que la constante de tiempo más corta dure ~1 s real.
+  // Velocidad automática: que la constante de tiempo (o el periodo de la AC)
+  // más corta dure ~1 s real.
   const autoScale = useMemo(() => {
-    const taus = translation.circuit.components
-      .filter(isReactive)
-      .map((c) => firstOrder(translation.circuit, c.id)?.tau ?? NaN)
+    const times = translation.circuit.components
+      .map((c) => (c.kind === 'ac-source' ? 1 / c.frequency : isReactive(c) ? firstOrder(translation.circuit, c.id)?.tau ?? NaN : NaN))
       .filter((t) => Number.isFinite(t) && t > 0)
-    return taus.length ? niceScale(Math.min(...taus)) : 1
+    return times.length ? niceScale(Math.min(...times)) : 1
   }, [translation])
   const timescale = speed === 'auto' ? autoScale : speed
   const liveTraces = useMemo(

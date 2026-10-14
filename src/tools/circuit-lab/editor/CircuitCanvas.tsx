@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { ComponentKind, DCResult } from '../engine/types.ts'
+import { TERMINAL_COUNT, type ComponentKind, type DCResult } from '../engine/types.ts'
 import {
   HALF, keyOf, rotate, route, terminalPoints,
   type CircuitDoc, type Placed, type Pt, type Rotation, type Translation,
@@ -58,7 +58,8 @@ function voltageColor(v: number, max: number): string {
 /** Velocidad de los puntos (px/s) según la corriente, en escala logarítmica. */
 function flowSpeed(i: number): number {
   const a = Math.abs(i)
-  if (a < 1e-7) return 0
+  // Bajo 1 µA no se anima: son fugas (p. ej. un transistor con la base al aire).
+  if (a < 1e-6) return 0
   return Math.sign(i) * Math.min(140, 6 + 30 * Math.log10(1 + a / 1e-4))
 }
 
@@ -67,9 +68,12 @@ function toLocal(c: Placed, p: Pt): Pt {
   return rotate({ x: p.x - c.x, y: p.y - c.y }, ((4 - c.rot) % 4) as Rotation)
 }
 
+const isTriple = (c: { kind: Placed['kind'] }) => TERMINAL_COUNT[c.kind] === 3
+
 function hitComponent(c: Placed, p: Pt): boolean {
   const l = toLocal(c, p)
   if (c.kind === 'ground') return Math.abs(l.x) <= 0.8 && l.y >= -0.3 && l.y <= 1.4
+  if (isTriple(c)) return Math.abs(l.x) <= 1.6 && Math.abs(l.y) <= 1.6
   return Math.abs(l.x) <= HALF - 0.4 && Math.abs(l.y) <= 1
 }
 
@@ -110,7 +114,7 @@ export function CircuitCanvas(props: Props) {
         ...terminalPoints(c),
         { x: c.x, y: c.y + 1.5 },
         { x: c.x, y: c.y - 1.5 },
-        ...(c.rot % 2 === 1 ? [{ x: c.x + 4.5, y: c.y }] : []),
+        ...(c.rot % 2 === 1 || isTriple(c) ? [{ x: c.x + 5, y: c.y }] : []),
       ]),
       ...doc.wires.flatMap((w) => [{ x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 }]),
     ]
@@ -328,17 +332,18 @@ export function CircuitCanvas(props: Props) {
         {/* Componentes */}
         {doc.components.map((c) => {
           const nets = solution?.terminalNets[c.id]
-          const leads: [string, string?] = [colorOfNet(nets?.[0]), colorOfNet(nets?.[1])]
+          const leads = Array.from({ length: TERMINAL_COUNT[c.kind] }, (_, t) => colorOfNet(nets?.[t]))
           const sel = isSelected('component', c.id)
           const bad = highlight.has(c.id)
           return (
             <g key={c.id} transform={`translate(${c.x * G},${c.y * G}) rotate(${c.rot * 90})`}>
               {(sel || bad) && (
                 <rect
-                  x={c.kind === 'ground' ? -18 : -HALF * G - 6}
-                  y={c.kind === 'ground' ? -8 : -22}
-                  width={c.kind === 'ground' ? 36 : HALF * G * 2 + 12}
-                  height={c.kind === 'ground' ? 40 : 44}
+                  {...(c.kind === 'ground'
+                    ? { x: -18, y: -8, width: 36, height: 40 }
+                    : isTriple(c)
+                      ? { x: -46, y: -46, width: 92, height: 92 }
+                      : { x: -HALF * G - 6, y: -22, width: HALF * G * 2 + 12, height: 44 })}
                   rx={8}
                   fill={sel ? '#dbeafe' : props.highlightTone === 'error' ? '#fee2e2' : '#fef3c7'}
                   stroke={sel ? '#60a5fa' : props.highlightTone === 'error' ? '#f87171' : '#fbbf24'}
@@ -365,7 +370,21 @@ export function CircuitCanvas(props: Props) {
             })}
             {doc.components.map((c) => {
               if (c.kind === 'ground' || c.kind === 'voltmeter') return null
-              const speed = flowSpeed(solution.components[c.id]?.current ?? 0)
+              const state = solution.components[c.id]
+              if (!state) return null
+              if (isTriple(c)) {
+                // Un tramo por terminal, del terminal al centro (sentido de la corriente que entra).
+                return terminalPoints(c).map((p, t) => {
+                  const speed = flowSpeed(state.terminalCurrents[t] ?? 0)
+                  if (!speed) return null
+                  return (
+                    <line key={`f-${c.id}-${t}`} data-speed={speed}
+                      x1={p.x * G} y1={p.y * G} x2={c.x * G} y2={c.y * G}
+                      stroke="#facc15" strokeWidth={4.5} strokeLinecap="round" strokeDasharray="0 16" />
+                  )
+                })
+              }
+              const speed = flowSpeed(state.current)
               if (!speed) return null
               const [a, b] = terminalPoints(c)
               return (
@@ -429,13 +448,18 @@ function Label({ c, result }: { c: Placed; result: DCResult }) {
     case 'inductor': value = formatSI(c.inductance, 'H'); break
     case 'zener': value = formatSI(c.zenerVoltage, 'V'); break
     case 'led': value = LED_NAME[c.color]; break
+    case 'ac-source': value = `${formatSI(c.amplitude, 'V')} ${formatSI(c.frequency, 'Hz')}`; break
+    case 'bjt': value = `${c.polarity.toUpperCase()} β=${c.beta}`; break
+    case 'mosfet': value = `canal ${c.polarity.toUpperCase()}`; break
     case 'switch': value = c.closed ? 'cerrado' : 'abierto'; break
     case 'voltmeter': value = state ? formatSI(state.voltage, 'V') : '—'; strong = true; break
     case 'ammeter': value = state ? formatSI(state.current, 'A') : '—'; strong = true; break
   }
-  const vertical = c.rot % 2 === 1
-  const x = (c.x + (vertical ? 1.15 : 0)) * G
-  const y = (c.y + (vertical ? 0.3 : -1.35)) * G
+  // A la derecha si es vertical o de 3 terminales; arriba si es horizontal.
+  const side = c.rot % 2 === 1 || isTriple(c)
+  const x = (c.x + (isTriple(c) ? 2.3 : side ? 1.15 : 0)) * G
+  const y = (c.y + (isTriple(c) ? -1.6 : side ? 0.3 : -1.35)) * G
+  const vertical = side
   const letter = METER_LETTER[c.kind]
   return (
     <g pointerEvents="none">

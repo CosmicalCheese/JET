@@ -16,6 +16,17 @@ export const KIND_LABEL: Record<ComponentKind, string> = {
   diode: 'Diodo',
   led: 'LED',
   zener: 'Diodo Zener',
+  'ac-source': 'Fuente AC (senoidal)',
+  bjt: 'Transistor BJT',
+  mosfet: 'Transistor MOSFET',
+  opamp: 'Amplificador operacional',
+}
+
+/** Nombre de cada terminal (para 3 terminales). */
+export const TERMINAL_NAMES: Partial<Record<ComponentKind, string[]>> = {
+  bjt: ['C', 'B', 'E'],
+  mosfet: ['D', 'G', 'S'],
+  opamp: ['+', '−', 'salida'],
 }
 
 export const LED_NAME: Record<LedColor, string> = {

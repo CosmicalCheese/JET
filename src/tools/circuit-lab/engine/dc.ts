@@ -1,9 +1,12 @@
 /* ─── Solver (Modified Nodal Analysis + Newton-Raphson) ───
  *
  * Incógnitas: el voltaje de cada net (menos uno de referencia por cada parte
- * conectada) y la corriente de cada elemento "tipo fuente de voltaje"
- * (fuentes de voltaje y amperímetros, que son fuentes de 0 V; en DC también
- * las bobinas).
+ * conectada) y la corriente de cada "rama tipo fuente de voltaje": fuentes de
+ * voltaje (DC y AC), amperímetros (fuentes de 0 V), la salida de cada op-amp
+ * y, en DC, las bobinas.
+ *
+ *   [ G  B ] [ v ]   [ i ]
+ *   [ C  0 ] [ j ] = [ e ]
  *
  * En modo transitorio, capacitores y bobinas se reemplazan por su "modelo
  * compañero" de Euler implícito: una conductancia en paralelo con una fuente
@@ -11,11 +14,9 @@
  *   Capacitor: i = C·(v − v₀)/dt  →  G = C/dt,  fuente G·v₀
  *   Bobina:    v = L·(i − i₀)/dt  →  G = dt/L,  fuente i₀
  *
- * Los diodos no son lineales: se resuelven con Newton-Raphson, linealizando
- * cada uno alrededor de un voltaje de prueba y repitiendo hasta que converge.
- *
- *   [ G  B ] [ v ]   [ i ]
- *   [ C  0 ] [ j ] = [ e ]
+ * Diodos, transistores y op-amps no son lineales: se resuelven con
+ * Newton-Raphson, linealizando cada uno alrededor de un punto de prueba y
+ * repitiendo hasta que converge (ver devices.ts).
  *
  * Antes de armar la matriz se diagnostican los casos que la harían singular
  * (cortos, lazos de fuentes, fuentes de corriente al aire) para devolver un
@@ -23,8 +24,9 @@
  */
 
 import { cloneMatrix, DenseMatrix, solveLinear } from './linear.ts'
-import { diodeCurrent, diodeParams, isDiodeLike, limitStep, LED_VF } from './diode.ts'
-import { buildNetlist, terminalKey, endpointKey, UnionFind, type Netlist } from './netlist.ts'
+import { LED_VF } from './diode.ts'
+import { acValue, deviceModel, opampOutput, type DeviceModel } from './devices.ts'
+import { buildNetlist, terminalKey, endpointKey, GROUND_KEY, UnionFind, type Netlist } from './netlist.ts'
 import {
   TERMINAL_COUNT,
   type Circuit,
@@ -32,20 +34,49 @@ import {
   type CircuitIssue,
   type ComponentState,
   type DCResult,
+  type DiodeGuess,
   type SolveMode,
 } from './types.ts'
 
 const MAX_NEWTON = 100
 
-/** Elementos que fijan una diferencia de voltaje y aportan una corriente incógnita. */
-function isVoltageLike(c: CircuitComponent, mode: SolveMode): boolean {
-  return c.kind === 'voltage-source' || c.kind === 'ammeter' || (c.kind === 'inductor' && mode.kind === 'dc')
+/** Rama tipo fuente de voltaje: fija V(a) − V(b) y aporta su corriente como incógnita. */
+interface Branch {
+  c: CircuitComponent
+  a: number
+  b: number
 }
 
-/** Elementos que dan un camino entre sus terminales (para saber qué está conectado con qué). */
-function isConductive(c: CircuitComponent, mode: SolveMode): boolean {
-  if (c.kind === 'resistor' || isVoltageLike(c, mode) || isDiodeLike(c)) return true
-  return mode.kind === 'transient' && (c.kind === 'capacitor' || c.kind === 'inductor')
+/** Elementos de dos terminales que fijan una diferencia de voltaje. */
+function isVoltageLike(c: CircuitComponent, mode: SolveMode): boolean {
+  return (
+    c.kind === 'voltage-source' || c.kind === 'ac-source' || c.kind === 'ammeter' ||
+    (c.kind === 'inductor' && mode.kind === 'dc')
+  )
+}
+
+/** Pares de terminales unidos por un camino (para saber qué está conectado con qué). */
+function conductivePairs(c: CircuitComponent, mode: SolveMode): [number, number][] {
+  switch (c.kind) {
+    case 'resistor':
+    case 'voltage-source':
+    case 'ac-source':
+    case 'ammeter':
+    case 'diode':
+    case 'led':
+    case 'zener':
+      return [[0, 1]]
+    case 'capacitor':
+      return mode.kind === 'transient' ? [[0, 1]] : []
+    case 'inductor':
+      return [[0, 1]]
+    case 'bjt':
+      return [[0, 1], [1, 2]]
+    case 'mosfet':
+      return [[0, 2]] // la compuerta está aislada
+    default:
+      return [] // fuente de corriente, switch, voltímetro, GND, op-amp (se trata aparte)
+  }
 }
 
 // ─── Validación ──────────────────────────────────────────────────────────────
@@ -66,9 +97,10 @@ export function validateCircuit(circuit: Circuit): CircuitIssue[] {
     byId.set(c.id, c)
     const bad = (what: string) =>
       issues.push({ code: 'invalid-value', message: `${c.id}: ${what}.`, ids: [c.id] })
+    const positive = (x: number) => Number.isFinite(x) && x > 0
     switch (c.kind) {
       case 'resistor':
-        if (!Number.isFinite(c.resistance) || c.resistance <= 0) bad('la resistencia debe ser mayor que 0 Ω')
+        if (!positive(c.resistance)) bad('la resistencia debe ser mayor que 0 Ω')
         break
       case 'voltage-source':
         if (!Number.isFinite(c.voltage)) bad('el voltaje no es un número válido')
@@ -77,16 +109,30 @@ export function validateCircuit(circuit: Circuit): CircuitIssue[] {
         if (!Number.isFinite(c.current)) bad('la corriente no es un número válido')
         break
       case 'capacitor':
-        if (!Number.isFinite(c.capacitance) || c.capacitance <= 0) bad('la capacitancia debe ser mayor que 0 F')
+        if (!positive(c.capacitance)) bad('la capacitancia debe ser mayor que 0 F')
         break
       case 'inductor':
-        if (!Number.isFinite(c.inductance) || c.inductance <= 0) bad('la inductancia debe ser mayor que 0 H')
+        if (!positive(c.inductance)) bad('la inductancia debe ser mayor que 0 H')
         break
       case 'zener':
-        if (!Number.isFinite(c.zenerVoltage) || c.zenerVoltage <= 0) bad('el voltaje Zener debe ser mayor que 0 V')
+        if (!positive(c.zenerVoltage)) bad('el voltaje Zener debe ser mayor que 0 V')
         break
       case 'led':
         if (!(c.color in LED_VF)) bad('color de LED desconocido')
+        break
+      case 'ac-source':
+        if (![c.amplitude, c.offset, c.phase].every(Number.isFinite)) bad('amplitud, offset y fase deben ser números')
+        if (!positive(c.frequency)) bad('la frecuencia debe ser mayor que 0 Hz')
+        break
+      case 'bjt':
+        if (!positive(c.beta)) bad('β debe ser mayor que 0')
+        break
+      case 'mosfet':
+        if (!positive(c.threshold)) bad('el voltaje de umbral debe ser mayor que 0 V')
+        if (!positive(c.k)) bad('k debe ser mayor que 0')
+        break
+      case 'opamp':
+        if (!positive(c.saturation)) bad('el voltaje de saturación debe ser mayor que 0 V')
         break
     }
   }
@@ -110,48 +156,34 @@ export function validateCircuit(circuit: Circuit): CircuitIssue[] {
 // ─── Diagnóstico topológico ──────────────────────────────────────────────────
 
 /**
- * Busca cortos y lazos formados solo por fuentes de voltaje / amperímetros
- * (y cables): ahí la corriente sería infinita o indeterminada.
+ * Busca cortos y lazos formados solo por ramas tipo fuente de voltaje (y
+ * cables): ahí la corriente sería infinita o indeterminada.
  */
-function findSourceLoops(
-  voltageLike: CircuitComponent[],
-  nets: Netlist,
-  netOf: (id: string, t: number) => number,
-): CircuitIssue[] {
+function findSourceLoops(branches: Branch[], netCount: number): CircuitIssue[] {
   const issues: CircuitIssue[] = []
   const uf = new UnionFind()
-  for (let i = 0; i < nets.netCount; i++) uf.add()
+  for (let i = 0; i < netCount; i++) uf.add()
   // Bosque de aristas aceptadas, para reconstruir el lazo cuando aparece.
-  const adjacency: { to: number; id: string }[][] = Array.from({ length: nets.netCount }, () => [])
+  const adjacency: { to: number; id: string }[][] = Array.from({ length: netCount }, () => [])
 
-  for (const c of voltageLike) {
-    const a = netOf(c.id, 0)
-    const b = netOf(c.id, 1)
+  for (const { c, a, b } of branches) {
     if (a === b) {
+      let message: string
       if (c.kind === 'ammeter') {
-        issues.push({
-          code: 'short-circuit',
-          message: `El amperímetro ${c.id} está puenteado por un cable: no hay forma de saber qué corriente pasa por él.`,
-          ids: [c.id],
-        })
-      } else if (c.kind === 'voltage-source' && c.voltage !== 0) {
-        issues.push({
-          code: 'short-circuit',
-          message: `La fuente ${c.id} está en cortocircuito: sus terminales están unidos por un cable.`,
-          ids: [c.id],
-        })
+        message = `El amperímetro ${c.id} está puenteado por un cable: no hay forma de saber qué corriente pasa por él.`
+      } else if (c.kind === 'opamp') {
+        message = `La salida del op-amp ${c.id} está conectada directo a GND.`
+      } else if ((c.kind === 'voltage-source' && c.voltage !== 0) || c.kind === 'ac-source') {
+        message = `La fuente ${c.id} está en cortocircuito: sus terminales están unidos por un cable.`
       } else {
-        issues.push({
-          code: 'short-circuit',
-          message: `La fuente ${c.id} (0 V) está puenteada por un cable: su corriente es indeterminada.`,
-          ids: [c.id],
-        })
+        message = `La fuente ${c.id} (0 V) está puenteada por un cable: su corriente es indeterminada.`
       }
+      issues.push({ code: 'short-circuit', message, ids: [c.id] })
       continue
     }
     if (!uf.union(a, b)) {
       const ids = [...pathBetween(adjacency, a, b), c.id]
-      const withInductor = voltageLike.some((k) => k.kind === 'inductor' && ids.includes(k.id))
+      const withInductor = branches.some((k) => k.c.kind === 'inductor' && ids.includes(k.c.id))
       issues.push({
         code: 'source-loop',
         message:
@@ -199,30 +231,46 @@ export function solveDC(circuit: Circuit): DCResult {
   return solveCircuit(circuit, { kind: 'dc' })
 }
 
+const fail = (issues: CircuitIssue[]): DCResult => ({ ok: false, issues })
+
 export function solveCircuit(circuit: Circuit, mode: SolveMode): DCResult {
   const invalid = validateCircuit(circuit)
-  if (invalid.length) return { ok: false, issues: invalid }
+  if (invalid.length) return fail(invalid)
 
   const nets = buildNetlist(circuit)
   const vertexOf = (id: string, t: number) => nets.vertexOf.get(terminalKey(id, t))!
   const netOf = (id: string, t: number) => nets.netOfVertex[vertexOf(id, t)]
+  const time = mode.time ?? 0
+
+  const opamps = circuit.components.filter((c) => c.kind === 'opamp')
+  if (opamps.length && nets.groundNet === null) {
+    return fail([{
+      code: 'needs-ground',
+      message: 'El op-amp necesita GND: su salida se mide respecto a tierra (ahí se conecta su alimentación).',
+      ids: opamps.map((c) => c.id),
+    }])
+  }
 
   // Una bobina puenteada por un cable en DC no lleva corriente definida ni hace daño: se ignora.
-  const voltageLike = circuit.components.filter(
-    (c) => isVoltageLike(c, mode) && !(c.kind === 'inductor' && netOf(c.id, 0) === netOf(c.id, 1)),
-  )
-  const isBranch = new Set(voltageLike.map((c) => c.id))
+  const branches: Branch[] = [
+    ...circuit.components
+      .filter((c) => isVoltageLike(c, mode) && !(c.kind === 'inductor' && netOf(c.id, 0) === netOf(c.id, 1)))
+      .map((c) => ({ c, a: netOf(c.id, 0), b: netOf(c.id, 1) })),
+    ...opamps.map((c) => ({ c, a: netOf(c.id, 2), b: nets.groundNet! })),
+  ]
+  const isBranch = new Set(branches.map((br) => br.c.id))
 
-  const loops = findSourceLoops(voltageLike, nets, netOf)
-  if (loops.length) return { ok: false, issues: loops }
+  const loops = findSourceLoops(branches, nets.netCount)
+  if (loops.length) return fail(loops)
 
-  // Partes conectadas por caminos DC. Cada una necesita su propio nodo de
+  // Partes conectadas por caminos. Cada una necesita su propio nodo de
   // referencia; la que contiene GND usa GND.
   const islands = new UnionFind()
   for (let i = 0; i < nets.netCount; i++) islands.add()
   for (const c of circuit.components) {
-    if (isConductive(c, mode)) islands.union(netOf(c.id, 0), netOf(c.id, 1))
+    for (const [s, t] of conductivePairs(c, mode)) islands.union(netOf(c.id, s), netOf(c.id, t))
   }
+  for (const br of branches) islands.union(br.a, br.b)
 
   const issues: CircuitIssue[] = []
   for (const c of circuit.components) {
@@ -234,7 +282,7 @@ export function solveCircuit(circuit: Circuit, mode: SolveMode): DCResult {
       })
     }
   }
-  if (issues.length) return { ok: false, issues }
+  if (issues.length) return fail(issues)
 
   const referenceOf = new Map<number, number>() // raíz de la isla → net de referencia
   if (nets.groundNet !== null) referenceOf.set(islands.find(nets.groundNet), nets.groundNet)
@@ -252,7 +300,7 @@ export function solveCircuit(circuit: Circuit, mode: SolveMode): DCResult {
     if (referenceOf.get(islands.find(n)) !== n) unknownOfNet[n] = size++
   }
   const branchOf = new Map<string, number>()
-  for (const c of voltageLike) branchOf.set(c.id, size++)
+  for (const br of branches) branchOf.set(br.c.id, size++)
   const state = mode.kind === 'transient' ? mode.state : {}
   const companionG = (c: CircuitComponent): number =>
     mode.kind !== 'transient' ? 0
@@ -260,7 +308,7 @@ export function solveCircuit(circuit: Circuit, mode: SolveMode): DCResult {
       : c.kind === 'inductor' ? mode.dt / c.inductance
       : 0
 
-  // Estampado.
+  // ─── Parte lineal ──────────────────────────────────────────────────────────
   const A = new DenseMatrix(size)
   const z = new Float64Array(size)
   const stampConductance = (a: number, b: number, g: number) => {
@@ -273,32 +321,29 @@ export function solveCircuit(circuit: Circuit, mode: SolveMode): DCResult {
       A.add(ib, ia, -g)
     }
   }
-
   /** Fuente de corriente que empuja `i` hacia el net a y la saca del net b. */
   const stampSource = (a: number, b: number, i: number) => {
     if (unknownOfNet[a] >= 0) z[unknownOfNet[a]] += i
     if (unknownOfNet[b] >= 0) z[unknownOfNet[b]] -= i
   }
 
+  for (const br of branches) {
+    const k = branchOf.get(br.c.id)!
+    const ia = unknownOfNet[br.a]
+    const ib = unknownOfNet[br.b]
+    // La corriente de la rama sale del net a hacia el componente y vuelve por b.
+    if (ia >= 0) A.add(ia, k, 1)
+    if (ib >= 0) A.add(ib, k, -1)
+    if (br.c.kind === 'opamp') continue // su ecuación de rama es no lineal: se arma en Newton
+    if (ia >= 0) A.add(k, ia, 1)
+    if (ib >= 0) A.add(k, ib, -1)
+    z[k] = br.c.kind === 'voltage-source' ? br.c.voltage : br.c.kind === 'ac-source' ? acValue(br.c, time) : 0
+  }
+
   for (const c of circuit.components) {
-    if (c.kind === 'ground') continue
+    if (isBranch.has(c.id) || TERMINAL_COUNT[c.kind] !== 2) continue
     const a = netOf(c.id, 0)
     const b = netOf(c.id, 1)
-    const ia = unknownOfNet[a]
-    const ib = unknownOfNet[b]
-    if (isBranch.has(c.id)) {
-      const k = branchOf.get(c.id)!
-      if (ia >= 0) {
-        A.add(ia, k, 1)
-        A.add(k, ia, 1)
-      }
-      if (ib >= 0) {
-        A.add(ib, k, -1)
-        A.add(k, ib, -1)
-      }
-      z[k] = c.kind === 'voltage-source' ? c.voltage : 0
-      continue
-    }
     switch (c.kind) {
       case 'resistor':
         stampConductance(a, b, 1 / c.resistance)
@@ -320,89 +365,144 @@ export function solveCircuit(circuit: Circuit, mode: SolveMode): DCResult {
         stampSource(a, b, -(state[c.id] ?? 0))
         break
       default:
-        break // switch y voltímetro: abiertos para el solver; el switch cerrado ya es parte del netlist
+        break // switch y voltímetro: abiertos; diodos: no lineales (abajo)
     }
   }
 
-  // Diodos: cada uno se reemplaza por su recta tangente en un voltaje de
-  // prueba (conductancia g + fuente), se resuelve, y se repite con el voltaje
-  // resultante hasta que deja de cambiar.
-  const diodes = circuit.components.filter(isDiodeLike).map((d) => ({
-    id: d.id, p: diodeParams(d), a: netOf(d.id, 0), b: netOf(d.id, 1),
-  }))
-  const guess = new Map(diodes.map((d) => [d.id, mode.guess?.[d.id] ?? 0]))
+  // ─── Parte no lineal: Newton-Raphson ───────────────────────────────────────
+  interface Device { id: string; m: DeviceModel; nets: number[] }
+  const devices: Device[] = []
+  for (const c of circuit.components) {
+    const m = deviceModel(c)
+    if (m) devices.push({ id: c.id, m, nets: Array.from({ length: TERMINAL_COUNT[c.kind] }, (_, t) => netOf(c.id, t)) })
+  }
+  const ctrl = new Map(devices.map((d) => [d.id, d.m.initial.map((v, k) => mode.guess?.[`${d.id}#${k}`] ?? v)]))
+  const opDiff = new Map(opamps.map((c) => [c.id, mode.guess?.[`${c.id}#0`] ?? 0]))
+  const nonlinear = devices.length + opamps.length > 0
+
   const nodeV = (sol: Float64Array, n: number) => (unknownOfNet[n] >= 0 ? sol[unknownOfNet[n]] : 0)
+  const ctrlOf = (d: Device, sol: Float64Array) => {
+    const v = d.nets.map((n) => nodeV(sol, n))
+    return d.m.C.map((row) => row.reduce((s, cij, j) => s + cij * v[j], 0))
+  }
+  // Convergencia como en SPICE: el voltaje de control dejó de cambiar (1 µV +
+  // 10⁻⁵ relativo) o, si no, la corriente del dispositivo (1 pA + 10⁻⁵). Lo
+  // segundo hace falta cuando un nodo cuelga solo de diodos apagados: su
+  // voltaje queda mal condicionado y vibra al nivel del redondeo, pero la
+  // corriente que eso produce es despreciable.
+  const close = (a: number, b: number) => Math.abs(a - b) <= 1e-6 + 1e-5 * Math.abs(b)
+  const closeI = (a: number, b: number) => Math.abs(a - b) <= 1e-12 + 1e-5 * Math.abs(b)
 
   let x: Float64Array | null = null
-  let converged = diodes.length === 0
-  for (let iter = 0; iter < (diodes.length ? MAX_NEWTON : 1); iter++) {
+  let converged = !nonlinear
+  for (let iter = 0; iter < (nonlinear ? MAX_NEWTON : 1); iter++) {
     let Ak = A
     let zk = z
-    if (diodes.length) {
+    if (nonlinear) {
       Ak = cloneMatrix(A)
       zk = Float64Array.from(z)
-      for (const d of diodes) {
-        const v = guess.get(d.id)!
-        const { i, g } = diodeCurrent(d.p, v)
-        const ia = unknownOfNet[d.a]
-        const ib = unknownOfNet[d.b]
-        if (ia >= 0) Ak.add(ia, ia, g)
-        if (ib >= 0) Ak.add(ib, ib, g)
-        if (ia >= 0 && ib >= 0) {
-          Ak.add(ia, ib, -g)
-          Ak.add(ib, ia, -g)
+      // I ≈ I₀ + D·(ctrl − ctrl₀) con ctrl = C·v  →  G = D·C,  fuente I₀ − D·ctrl₀
+      for (const d of devices) {
+        const c0 = ctrl.get(d.id)!
+        const { I, D } = d.m.evaluate(c0)
+        for (let i = 0; i < d.nets.length; i++) {
+          const row = unknownOfNet[d.nets[i]]
+          if (row < 0) continue
+          for (let j = 0; j < d.nets.length; j++) {
+            const col = unknownOfNet[d.nets[j]]
+            if (col < 0) continue
+            let g = 0
+            for (let k = 0; k < c0.length; k++) g += D[i][k] * d.m.C[k][j]
+            Ak.add(row, col, g)
+          }
+          let constant = I[i]
+          for (let k = 0; k < c0.length; k++) constant -= D[i][k] * c0[k]
+          zk[row] -= constant
         }
-        // Corriente del diodo ≈ g·V + ieq, del ánodo al cátodo.
-        const ieq = i - g * v
-        if (ia >= 0) zk[ia] -= ieq
-        if (ib >= 0) zk[ib] += ieq
+      }
+      // Op-amp: V_salida = f(V+ − V−) ≈ f(vd₀) + f'(vd₀)·(vd − vd₀)
+      for (const c of opamps) {
+        if (c.kind !== 'opamp') continue
+        const k = branchOf.get(c.id)!
+        const vd0 = opDiff.get(c.id)!
+        const { v, dv } = opampOutput(c.saturation, vd0)
+        const [p, n, out] = [netOf(c.id, 0), netOf(c.id, 1), netOf(c.id, 2)]
+        if (unknownOfNet[out] >= 0) Ak.add(k, unknownOfNet[out], 1)
+        if (unknownOfNet[p] >= 0) Ak.add(k, unknownOfNet[p], -dv)
+        if (unknownOfNet[n] >= 0) Ak.add(k, unknownOfNet[n], dv)
+        zk[k] = v - dv * vd0
       }
     }
     x = size > 0 ? solveLinear(Ak, zk) : new Float64Array(0)
-    if (!x || !diodes.length) break
+    if (!x || !nonlinear) break
     converged = true
-    for (const d of diodes) {
-      const vold = guess.get(d.id)!
-      const vnew = nodeV(x, d.a) - nodeV(x, d.b)
-      if (Math.abs(vnew - vold) > 1e-9 + 1e-6 * Math.abs(vold)) converged = false
-      guess.set(d.id, limitStep(d.p, vnew, vold))
+    for (const d of devices) {
+      const old = ctrl.get(d.id)!
+      const next = ctrlOf(d, x)
+      if (next.some((v, k) => !close(v, old[k]))) {
+        const iOld = d.m.evaluate(old).I
+        const iNew = d.m.evaluate(next).I
+        if (iNew.some((i, t) => !closeI(i, iOld[t]))) converged = false
+      }
+      ctrl.set(d.id, d.m.limit(next, old))
+    }
+    for (const c of opamps) {
+      if (c.kind !== 'opamp') continue
+      const old = opDiff.get(c.id)!
+      const next = nodeV(x, netOf(c.id, 0)) - nodeV(x, netOf(c.id, 1))
+      // Se compara la salida: V+ − V− es diminuto (la ganancia es 10⁵).
+      if (!close(opampOutput(c.saturation, next).v, opampOutput(c.saturation, old).v)) converged = false
+      opDiff.set(c.id, next)
     }
     if (converged) break
   }
-  if (!x) {
-    return {
-      ok: false,
-      issues: [{ code: 'singular', message: 'No se pudo resolver el circuito (sistema singular).', ids: [] }],
-    }
-  }
+  if (!x) return fail([{ code: 'singular', message: 'No se pudo resolver el circuito (sistema singular).', ids: [] }])
   if (!converged) {
-    return {
-      ok: false,
-      issues: [{
-        code: 'no-convergence',
-        message: 'No se encontró un punto de operación estable para los diodos. Revisa que no haya diodos en paralelo directo con una fuente.',
-        ids: diodes.map((d) => d.id),
-      }],
-    }
+    return fail([{
+      code: 'no-convergence',
+      message: 'No se encontró un punto de operación estable para los diodos, transistores u op-amps. Revisa sus conexiones.',
+      ids: [...devices.map((d) => d.id), ...opamps.map((c) => c.id)],
+    }])
   }
 
   const netVoltages = unknownOfNet.map((u) => (u >= 0 ? x[u] : 0))
+  const guess: DiodeGuess = {}
 
-  // Estado de los componentes (convención pasiva).
+  // ─── Estado de los componentes (convención pasiva) ─────────────────────────
   const components: Record<string, ComponentState> = {}
   const terminalNets: Record<string, number[]> = {}
+  const deviceById = new Map(devices.map((d) => [d.id, d]))
   for (const c of circuit.components) {
-    terminalNets[c.id] = Array.from({ length: TERMINAL_COUNT[c.kind] }, (_, t) => netOf(c.id, t))
+    const tn = Array.from({ length: TERMINAL_COUNT[c.kind] }, (_, t) => netOf(c.id, t))
+    terminalNets[c.id] = tn
     if (c.kind === 'ground') continue
-    const voltage = netVoltages[netOf(c.id, 0)] - netVoltages[netOf(c.id, 1)]
+    const vt = tn.map((n) => netVoltages[n])
+
+    const device = deviceById.get(c.id)
+    if (device) {
+      const cv = ctrlOf(device, x)
+      cv.forEach((v, k) => (guess[`${c.id}#${k}`] = v))
+      const I = device.m.evaluate(cv).I
+      // 2 terminales: V(0) − V(1) e I(0→1). Transistores: V_CE / V_DS e I_C / I_D.
+      const voltage = tn.length === 2 ? vt[0] - vt[1] : vt[0] - vt[2]
+      components[c.id] = { voltage, current: I[0], power: vt.reduce((s, v, t) => s + v * I[t], 0), terminalCurrents: I }
+      continue
+    }
+    if (c.kind === 'opamp') {
+      const iOut = x[branchOf.get(c.id)!] // entra a la salida desde el circuito
+      guess[`${c.id}#0`] = vt[0] - vt[1]
+      components[c.id] = { voltage: vt[2], current: -iOut, power: vt[2] * iOut, terminalCurrents: [0, 0, iOut] }
+      continue
+    }
+
+    const voltage = vt[0] - vt[1]
     let current = 0
     if (isBranch.has(c.id)) current = x[branchOf.get(c.id)!]
     else if (c.kind === 'resistor') current = voltage / c.resistance
     else if (c.kind === 'current-source') current = -c.current
     else if (c.kind === 'capacitor' && mode.kind === 'transient') current = companionG(c) * (voltage - (state[c.id] ?? 0))
     else if (c.kind === 'inductor' && mode.kind === 'transient') current = companionG(c) * voltage + (state[c.id] ?? 0)
-    else if (isDiodeLike(c)) current = diodeCurrent(diodeParams(c), voltage).i
-    components[c.id] = { voltage, current, power: voltage * current }
+    components[c.id] = { voltage, current, power: voltage * current, terminalCurrents: [current, -current] }
   }
 
   // Corrientes en cables, switches cerrados y GND.
@@ -413,7 +513,10 @@ export function solveCircuit(circuit: Circuit, mode: SolveMode): DCResult {
     if (c.kind === 'switch' || c.kind === 'ground') {
       const current = idealCurrents.get(c.id) ?? 0
       const voltage = c.kind === 'ground' ? 0 : components[c.id].voltage
-      components[c.id] = { voltage, current, power: voltage * current }
+      components[c.id] = {
+        voltage, current, power: voltage * current,
+        terminalCurrents: c.kind === 'ground' ? [current] : [current, -current],
+      }
     }
   }
 
@@ -424,7 +527,10 @@ export function solveCircuit(circuit: Circuit, mode: SolveMode): DCResult {
     }
   }
 
-  return { ok: true, netVoltages, terminalNets, junctionNets, components, wireCurrents, warnings }
+  return {
+    ok: true, netVoltages, terminalNets, junctionNets, components, wireCurrents, warnings,
+    groundNet: nets.groundNet, guess,
+  }
 }
 
 function floatingWarnings(
@@ -469,13 +575,15 @@ function solveIdealEdgeCurrents(
   vertexOf: (id: string, t: number) => number,
   components: Record<string, ComponentState>,
 ): Map<string, number> {
-  // Corriente que cada componente empuja hacia el vértice de su terminal.
+  // Corriente que cada componente empuja hacia el vértice de cada terminal.
   const injection = new Float64Array(nets.vertexCount)
+  const groundVertex = nets.vertexOf.get(GROUND_KEY)
   for (const c of circuit.components) {
     if (c.kind === 'ground' || c.kind === 'switch') continue
-    const i = components[c.id].current
-    injection[vertexOf(c.id, 0)] -= i
-    injection[vertexOf(c.id, 1)] += i
+    const tc = components[c.id].terminalCurrents
+    tc.forEach((i, t) => (injection[vertexOf(c.id, t)] -= i))
+    // La corriente de salida de un op-amp vuelve por su alimentación, que está en GND.
+    if (c.kind === 'opamp' && groundVertex !== undefined) injection[groundVertex] += tc[2]
   }
 
   const adjacency: number[][] = Array.from({ length: nets.vertexCount }, () => [])

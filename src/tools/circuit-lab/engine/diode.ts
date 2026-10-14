@@ -13,8 +13,13 @@ import type { CircuitComponent, LedColor } from './types.ts'
 /** Voltaje térmico kT/q a 27 °C. */
 export const VT = 0.025852
 
-/** Conductancia mínima en paralelo con cada diodo: evita matrices singulares cuando está bloqueado. */
-export const GMIN = 1e-12
+/**
+ * Conductancia mínima en paralelo con cada unión: evita matrices casi
+ * singulares cuando un diodo está bloqueado. SPICE usa 1e-12; aquí 1e-9
+ * (nanoamperes de fuga), porque con pasos de tiempo cortos un capacitor
+ * puede valer 10⁷ S y 1e-12 quedaría por debajo de la precisión numérica.
+ */
+export const GMIN = 1e-9
 
 export interface DiodeParams {
   /** Corriente de saturación (A). */
@@ -58,7 +63,7 @@ export function diodeParams(c: DiodeLike): DiodeParams {
 }
 
 /** e^x sin desbordarse: más allá de x = 80 continúa en línea recta. */
-function safeExp(x: number): { e: number; de: number } {
+export function safeExp(x: number): { e: number; de: number } {
   if (x <= 80) {
     const e = Math.exp(x)
     return { e, de: e }
@@ -84,7 +89,7 @@ export function diodeCurrent(p: DiodeParams, v: number): { i: number; g: number 
 }
 
 /** Limita un paso de Newton sobre una unión p-n (pnjlim de SPICE). */
-function pnjlim(vnew: number, vold: number, nvt: number, vcrit: number): number {
+export function pnjlim(vnew: number, vold: number, nvt: number, vcrit: number): number {
   if (vnew > vcrit && Math.abs(vnew - vold) > 2 * nvt) {
     if (vold > 0) {
       const arg = 1 + (vnew - vold) / nvt

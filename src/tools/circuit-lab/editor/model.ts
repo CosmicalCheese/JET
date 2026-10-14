@@ -47,9 +47,19 @@ export function rotate(p: Pt, rot: Rotation): Pt {
   return { x: x + 0, y: y + 0 } // + 0 evita -0
 }
 
-/** Terminales en coordenadas locales (antes de rotar). */
+/** Terminales en coordenadas locales (antes de rotar), en el orden del motor. */
 export function localTerminals(kind: ComponentKind): Pt[] {
-  return kind === 'ground' ? [{ x: 0, y: 0 }] : [{ x: -HALF, y: 0 }, { x: HALF, y: 0 }]
+  switch (kind) {
+    case 'ground':
+      return [{ x: 0, y: 0 }]
+    case 'bjt': // C, B, E
+    case 'mosfet': // D, G, S
+      return [{ x: 1, y: -2 }, { x: -2, y: 0 }, { x: 1, y: 2 }]
+    case 'opamp': // +, −, salida
+      return [{ x: -2, y: 1 }, { x: -2, y: -1 }, { x: 2, y: 0 }]
+    default:
+      return [{ x: -HALF, y: 0 }, { x: HALF, y: 0 }]
+  }
 }
 
 export function terminalPoints(c: Placed): Pt[] {
@@ -189,6 +199,10 @@ export const ID_PREFIX: Record<ComponentKind, string> = {
   diode: 'D',
   led: 'LED',
   zener: 'DZ',
+  'ac-source': 'V',
+  bjt: 'Q',
+  mosfet: 'M',
+  opamp: 'U',
 }
 
 export function nextId(taken: Iterable<string>, prefix: string): string {
@@ -211,6 +225,10 @@ export function createComponent(kind: ComponentKind, id: string, at: Pt, rot: Ro
     case 'diode': return { ...base, kind }
     case 'led': return { ...base, kind, color: 'red' }
     case 'zener': return { ...base, kind, zenerVoltage: 5.1 }
+    case 'ac-source': return { ...base, kind, amplitude: 5, frequency: 60, offset: 0, phase: 0 }
+    case 'bjt': return { ...base, kind, polarity: 'npn', beta: 100 }
+    case 'mosfet': return { ...base, kind, polarity: 'n', threshold: 2, k: 0.1 }
+    case 'opamp': return { ...base, kind, saturation: 12 }
   }
 }
 

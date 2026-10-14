@@ -647,4 +647,354 @@ const diodo: Formula = {
   keywords: ['diodo', 'led', 'zener', 'shockley', 'rectificador', 'semiconductor', 'regulador'],
 }
 
-export const CIRCUITOS: Formula[] = [divisor, serie, paralelo, kirchhoff, rcCircuit, rlCircuit, diodo]
+// ═══ Corriente alterna y rectificadores ══════════════════════════════════════
+
+const alterna: Formula = {
+  id: 'corriente-alterna',
+  name: 'Corriente alterna (senoidal)',
+  category: 'electricidad',
+  latex: L`V(t)=V_p\sin(2\pi ft)`,
+  forms: [
+    { label: 'Valor eficaz', latex: L`V_{rms}=\frac{V_p}{\sqrt2}` },
+    { label: 'Periodo', latex: L`T=\frac1f` },
+  ],
+  summary: 'Un voltaje que sube y baja como una senoide y cambia de sentido muchas veces por segundo.',
+  goal: 'Pasar entre el voltaje pico, el eficaz (el que dice la etiqueta) y el periodo de una señal de AC.',
+  variables: [
+    { symbol: 'V_p', meaning: 'Voltaje pico (amplitud)', unit: 'V' },
+    { symbol: 'V_{rms}', meaning: 'Voltaje eficaz: el DC que calentaría igual una resistencia', unit: 'V' },
+    { symbol: 'f', meaning: 'Frecuencia', unit: 'Hz' },
+    { symbol: 'T', meaning: 'Periodo: duración de un ciclo', unit: 's' },
+  ],
+  whenToUse: ['La red eléctrica (127 V, 60 Hz en México), transformadores, audio, señales de prueba.'],
+  intuition: [
+    'El voltaje de un enchufe no es fijo: oscila entre $+V_p$ y $-V_p$. La etiqueta “127 V” es el valor **eficaz**; el pico es unos 180 V.',
+    'El valor eficaz sale de promediar la **potencia** ($V^2/R$), no el voltaje: el promedio del voltaje en un ciclo es 0.',
+  ],
+  calculators: [
+    calc<{ vp: number; vrms: number; T: number }>({
+      id: 'rms',
+      label: 'Pico, eficaz y periodo',
+      example: 'la red doméstica de México: 127 V eficaces a 60 Hz.',
+      inputs: [
+        { kind: 'number', id: 'vrms', label: 'Voltaje eficaz', symbol: 'V_{rms}', default: 127, unit: 'V' },
+        { kind: 'number', id: 'f', label: 'Frecuencia', symbol: 'f', default: 60, unit: 'Hz' },
+      ],
+      compute: (v) => {
+        const f = num(v, 'f')
+        positiveList([f], 'f')
+        return { vrms: num(v, 'vrms'), vp: num(v, 'vrms') * Math.SQRT2, T: 1 / f }
+      },
+      steps: (_v, r) => [
+        { label: 'Pico', latex: L`V_p=\sqrt2\,V_{rms}=${fmt(r.vp)}${u('V')}` },
+        { label: 'Periodo', latex: L`T=\frac1f=${fmt(r.T * 1000)}${u('ms')}` },
+      ],
+      answer: (_v, r) => L`V_p=${fmt(r.vp)}${u('V')}`,
+      interpret: (v, r) => [
+        { tone: 'good', text: `El voltaje oscila entre $\\pm${fmt(r.vp, 1)}\\ \\mathrm{V}$ y repite cada $${fmt(r.T * 1000, 2)}\\ \\mathrm{ms}$: cambia de sentido $${fmt(2 * num(v, 'f'))}$ veces por segundo.` },
+      ],
+      visual: (_v, r) => ({
+        type: 'plot',
+        curves: [{
+          points: Array.from({ length: 121 }, (_, k): [number, number] => {
+            const t = (k / 120) * 2 * r.T
+            return [t * 1000, r.vp * Math.sin((2 * Math.PI * t) / r.T)]
+          }),
+          tone: 'a', label: 'V(t)',
+        }],
+        segments: [{ from: [0, r.vrms], to: [2 * r.T * 1000, r.vrms], tone: 'muted', dashed: true, label: 'V_rms' }],
+        caption: 'Eje x en ms (dos ciclos).',
+      }),
+      tryInTool: () => ({ path: '/circuit-lab?ejemplo=media-onda', label: 'Probar en Circuit Lab' }),
+    }),
+  ],
+  related: ['rectificador', 'potencia-electrica'],
+  toolLink: { path: '/circuit-lab?ejemplo=media-onda', label: 'Circuit Lab' },
+  keywords: ['ac', 'alterna', 'senoidal', 'rms', 'eficaz', 'frecuencia', 'periodo', '60 hz'],
+}
+
+const rectificador: Formula = {
+  id: 'rectificador',
+  name: 'Rectificadores y filtro con capacitor',
+  category: 'electricidad',
+  latex: L`V_{DC}\approx\frac{V_p}{\pi}\ \text{(media onda)}\qquad V_{DC}\approx\frac{2V_p}{\pi}\ \text{(onda completa)}`,
+  forms: [
+    { label: 'Rizado con filtro (onda completa)', latex: L`\Delta V\approx\frac{I}{2fC}` },
+    { label: 'Rizado con filtro (media onda)', latex: L`\Delta V\approx\frac{I}{fC}` },
+  ],
+  summary: 'Cómo convertir AC en DC con diodos, y cuánto “rizado” deja un capacitor de filtro.',
+  goal: 'Diseñar una fuente de alimentación simple: qué voltaje DC sale y qué capacitor se necesita para que sea casi constante.',
+  variables: [
+    { symbol: 'V_p', meaning: 'Voltaje pico que llega a la carga (descontando los diodos)', unit: 'V' },
+    { symbol: 'V_{DC}', meaning: 'Promedio de la salida sin filtro', unit: 'V' },
+    { symbol: '\\Delta V', meaning: 'Rizado: cuánto baja la salida entre picos', unit: 'V' },
+    { symbol: 'I', meaning: 'Corriente de la carga', unit: 'A' },
+    { symbol: 'C', meaning: 'Capacitor de filtro', unit: 'F' },
+  ],
+  whenToUse: ['Cargadores y fuentes de alimentación que convierten la AC del enchufe en DC.'],
+  intuition: [
+    '**Media onda:** un diodo deja pasar sólo los semiciclos positivos; la mitad del tiempo no hay nada.',
+    '**Onda completa (puente):** cuatro diodos “voltean” los semiciclos negativos; la salida pulsa el doble de rápido. Se pierden dos caídas de diodo (~1.4 V).',
+    '**Filtro:** el capacitor se carga en cada pico y entrega corriente mientras el voltaje baja. Más capacitancia o más frecuencia → menos rizado.',
+  ],
+  calculators: [
+    calc<{ vpOut: number; vdc: number; ripple: number }>({
+      id: 'filtro',
+      label: 'Fuente con puente y filtro',
+      example: '12 V pico a 60 Hz, puente de diodos, carga de 1 kΩ y capacitor de 470 µF.',
+      inputs: [
+        { kind: 'number', id: 'vp', label: 'Voltaje pico de la AC', symbol: 'V_{p,in}', default: 12, unit: 'V' },
+        { kind: 'number', id: 'f', label: 'Frecuencia', symbol: 'f', default: 60, unit: 'Hz' },
+        { kind: 'number', id: 'R', label: 'Carga', symbol: 'R_L', default: 1000, unit: 'Ω' },
+        { kind: 'number', id: 'C', label: 'Capacitor (µF)', symbol: 'C', default: 470, unit: 'µF' },
+      ],
+      compute: (v) => {
+        const [f, R, C] = [num(v, 'f'), num(v, 'R'), num(v, 'C') * 1e-6]
+        positiveList([f, R, C], 'f,\\ R,\\ C')
+        const vpOut = num(v, 'vp') - 1.4
+        if (vpOut <= 0) fail('Con menos de 1.4 V de pico los diodos del puente no conducen.')
+        return { vpOut, vdc: (2 * vpOut) / Math.PI, ripple: vpOut / R / (2 * f * C) }
+      },
+      steps: (v, r) => [
+        { label: 'Pico en la carga (dos diodos)', latex: L`V_p=${fmt(num(v, 'vp'))}-1.4=${fmt(r.vpOut)}${u('V')}` },
+        { label: 'Sin filtro (promedio)', latex: L`V_{DC}=\frac{2V_p}{\pi}=${fmt(r.vdc)}${u('V')}` },
+        { label: 'Rizado con filtro', latex: L`\Delta V\approx\frac{V_p/R_L}{2fC}=${fmt(r.ripple)}${u('V')}` },
+      ],
+      answer: (_v, r) => L`\Delta V\approx${fmt(r.ripple)}${u('V')}`,
+      interpret: (_v, r) => [
+        { tone: 'good', text: `Con el filtro la salida queda entre $${fmt(r.vpOut - r.ripple, 2)}$ y $${fmt(r.vpOut, 2)}\\ \\mathrm{V}$, casi DC.` },
+        { tone: 'info', text: `Sin capacitor el promedio sería $${fmt(r.vdc, 2)}\\ \\mathrm{V}$ y la salida bajaría a 0 en cada ciclo.` },
+      ],
+      tryInTool: () => ({ path: '/circuit-lab?ejemplo=onda-completa', label: 'Probar en Circuit Lab' }),
+    }),
+  ],
+  commonMistakes: ['Olvidar restar la caída de los diodos (0.7 V por diodo que conduce).'],
+  related: ['corriente-alterna', 'diodo', 'circuito-rc'],
+  toolLink: { path: '/circuit-lab?ejemplo=onda-completa', label: 'Circuit Lab' },
+  keywords: ['rectificador', 'puente', 'media onda', 'onda completa', 'rizado', 'filtro', 'fuente de alimentacion'],
+}
+
+// ═══ Transistores ════════════════════════════════════════════════════════════
+
+const bjt: Formula = {
+  id: 'transistor-bjt',
+  name: 'Transistor BJT',
+  category: 'electricidad',
+  latex: L`I_C=\beta\,I_B`,
+  forms: [
+    { label: 'Corriente de emisor', latex: L`I_E=I_C+I_B` },
+    { label: 'Base que conduce', latex: L`V_{BE}\approx0.7\ \mathrm{V}` },
+    { label: 'Como interruptor (saturado)', latex: L`I_B>\frac{I_C}{\beta},\quad V_{CE}\approx0.2\ \mathrm{V}` },
+  ],
+  summary: 'Una corriente pequeña en la base controla una corriente β veces mayor entre colector y emisor.',
+  goal: 'Usar un transistor como amplificador o como interruptor (encender un LED, relevador o motor con una señal débil).',
+  variables: [
+    { symbol: 'I_B', meaning: 'Corriente de base (control)', unit: 'A' },
+    { symbol: 'I_C', meaning: 'Corriente de colector (controlada)', unit: 'A' },
+    { symbol: '\\beta', meaning: 'Ganancia de corriente (típico 50–300)' },
+    { symbol: 'V_{CE}', meaning: 'Voltaje colector-emisor', unit: 'V' },
+  ],
+  whenToUse: [
+    '**Corte:** sin corriente de base, no conduce (interruptor abierto).',
+    '**Activa:** $I_C = \\beta I_B$ (amplificador).',
+    '**Saturación:** la base pide más corriente de la que el circuito permite; $V_{CE}$ cae a ~0.2 V (interruptor cerrado).',
+  ],
+  intuition: [
+    'Es una válvula: la base es la perilla. Poca corriente en la base abre mucho paso entre colector y emisor.',
+    'En saturación ya no amplifica: está “abierto al máximo” y lo que limita la corriente es el resto del circuito.',
+  ],
+  calculators: [
+    calc<{ ic: number; ibMin: number; rb: number }>({
+      id: 'switch',
+      label: 'Resistencia de base para usarlo como interruptor',
+      example: 'encender un LED (20 mA) con una señal de 5 V y un transistor de β = 100.',
+      inputs: [
+        { kind: 'number', id: 'ic', label: 'Corriente de la carga (mA)', symbol: 'I_C', default: 20, unit: 'mA' },
+        { kind: 'number', id: 'beta', label: 'Ganancia', symbol: '\\beta', default: 100 },
+        { kind: 'number', id: 'vin', label: 'Voltaje de control', symbol: 'V_{in}', default: 5, unit: 'V' },
+        { kind: 'number', id: 'k', label: 'Factor de seguridad', symbol: 'k', default: 5 },
+      ],
+      compute: (v) => {
+        const [ic, beta, vin, k] = [num(v, 'ic') / 1000, num(v, 'beta'), num(v, 'vin'), num(v, 'k')]
+        positiveList([ic, beta, k], 'I_C,\\ \\beta,\\ k')
+        if (vin <= 0.7) fail('El voltaje de control debe superar los 0.7 V de la base.')
+        const ibMin = ic / beta
+        return { ic, ibMin, rb: (vin - 0.7) / (k * ibMin) }
+      },
+      steps: (v, r) => [
+        { label: 'Corriente de base mínima', latex: L`I_B=\frac{I_C}{\beta}=${fmt(r.ibMin * 1e6)}${u(L`\mu A`)}` },
+        { label: 'Con factor de seguridad (para saturarlo bien)', latex: L`I_B=${fmt(num(v, 'k'))}\cdot${fmt(r.ibMin * 1e6)}=${fmt(num(v, 'k') * r.ibMin * 1e6)}${u(L`\mu A`)}` },
+        { label: 'Ley de Ohm en la base', latex: L`R_B=\frac{V_{in}-0.7}{I_B}=${fmt(r.rb)}${ohms}` },
+      ],
+      answer: (_v, r) => L`R_B\approx${fmt(r.rb, 0)}${ohms}`,
+      interpret: (_v, r) => [
+        { tone: 'good', text: `Con $R_B \\approx ${fmt(r.rb, 0)}\\ \\Omega$ el transistor se satura y la carga recibe sus $${fmt(r.ic * 1000)}\\ \\mathrm{mA}$.` },
+        { tone: 'info', text: 'El factor de seguridad cubre que β varía mucho entre transistores y con la temperatura.' },
+      ],
+      tryInTool: () => ({ path: '/circuit-lab?ejemplo=bjt', label: 'Probar en Circuit Lab' }),
+    }),
+  ],
+  commonMistakes: [
+    'Conectar la base directo a la fuente sin resistencia: la unión base-emisor es un diodo y se quema.',
+    'Suponer $I_C = \\beta I_B$ cuando está saturado.',
+  ],
+  related: ['mosfet', 'diodo', 'ley-de-ohm'],
+  toolLink: { path: '/circuit-lab?ejemplo=bjt', label: 'Circuit Lab' },
+  keywords: ['transistor', 'bjt', 'npn', 'pnp', 'beta', 'saturacion', 'interruptor', 'amplificador'],
+}
+
+const mosfet: Formula = {
+  id: 'mosfet',
+  name: 'Transistor MOSFET',
+  category: 'electricidad',
+  latex: L`I_D=\frac{k}{2}\left(V_{GS}-V_{th}\right)^2`,
+  forms: [
+    { label: 'Corte', latex: L`V_{GS}<V_{th}\Rightarrow I_D=0` },
+    { label: 'Zona óhmica (interruptor cerrado)', latex: L`I_D=k\left[(V_{GS}-V_{th})V_{DS}-\tfrac12V_{DS}^2\right]` },
+  ],
+  summary: 'Un transistor que se controla con voltaje en la compuerta, sin tomar corriente.',
+  goal: 'Saber si un MOSFET conduce, cuánta corriente deja pasar y por qué es el interruptor favorito para cargas grandes.',
+  variables: [
+    { symbol: 'V_{GS}', meaning: 'Voltaje compuerta-fuente (control)', unit: 'V' },
+    { symbol: 'V_{th}', meaning: 'Voltaje de umbral: a partir de aquí se forma el canal', unit: 'V' },
+    { symbol: 'k', meaning: 'Transconductancia del dispositivo', unit: 'A/V²' },
+    { symbol: 'I_D', meaning: 'Corriente de drenador', unit: 'A' },
+  ],
+  whenToUse: [
+    'Interruptores controlados por un microcontrolador (motores, tiras LED).',
+    'Lógica digital: todos los chips modernos están hechos de MOSFETs (CMOS).',
+  ],
+  intuition: [
+    'La compuerta es como la placa de un capacitor: el voltaje atrae cargas y forma un “canal” entre drenador y fuente. No pasa corriente por la compuerta.',
+    'Por debajo de $V_{th}$ no hay canal (abierto). Muy por encima, el canal es una resistencia pequeña (cerrado).',
+  ],
+  calculators: [
+    calc<{ id: number }>({
+      id: 'sat',
+      label: 'Corriente en saturación',
+      example: 'un MOSFET con $V_{th} = 2$ V y $k = 0.1\\ \\mathrm{A/V^2}$ con 3 V en la compuerta.',
+      inputs: [
+        { kind: 'number', id: 'vgs', label: 'V_GS', symbol: 'V_{GS}', default: 3, unit: 'V', step: 0.1 },
+        { kind: 'number', id: 'vth', label: 'Umbral', symbol: 'V_{th}', default: 2, unit: 'V', step: 0.1 },
+        { kind: 'number', id: 'k', label: 'k', symbol: 'k', default: 0.1, unit: 'A/V²', step: 0.01 },
+      ],
+      compute: (v) => {
+        const vov = num(v, 'vgs') - num(v, 'vth')
+        return { id: vov > 0 ? (num(v, 'k') / 2) * vov * vov : 0 }
+      },
+      steps: (v, r) => [
+        { label: 'Sobre el umbral', latex: L`V_{GS}-V_{th}=${fmt(num(v, 'vgs') - num(v, 'vth'))}${u('V')}` },
+        { label: 'Ley cuadrática', latex: L`I_D=\frac{${fmt(num(v, 'k'))}}{2}(${fmt(num(v, 'vgs') - num(v, 'vth'))})^2=${fmt(r.id * 1000)}${u('mA')}` },
+      ],
+      answer: (_v, r) => L`I_D=${fmt(r.id * 1000)}${u('mA')}`,
+      interpret: (v, r) => [
+        r.id === 0
+          ? { tone: 'warn', text: 'Está por debajo del umbral: no hay canal y no conduce.' }
+          : { tone: 'good', text: `Duplicar lo que $V_{GS}$ supera al umbral cuadruplica la corriente: con ${fmt(2 * (num(v, 'vgs') - num(v, 'vth')))} V sobre el umbral serían $${fmt(4 * r.id * 1000)}\\ \\mathrm{mA}$.` },
+      ],
+      tryInTool: () => ({ path: '/circuit-lab?ejemplo=mosfet', label: 'Probar en Circuit Lab' }),
+    }),
+  ],
+  commonMistakes: ['Dejar la compuerta “al aire”: sin resistencia pull-down conserva carga y el MOSFET puede quedarse encendido.'],
+  related: ['transistor-bjt'],
+  toolLink: { path: '/circuit-lab?ejemplo=mosfet', label: 'Circuit Lab' },
+  keywords: ['mosfet', 'transistor', 'compuerta', 'umbral', 'cmos', 'interruptor'],
+}
+
+const opamp: Formula = {
+  id: 'amplificador-operacional',
+  name: 'Amplificador operacional',
+  category: 'electricidad',
+  latex: L`V_{out}=-\frac{R_f}{R_{in}}\,V_{in}\ \text{(inversor)}`,
+  forms: [
+    { label: 'No inversor', latex: L`V_{out}=\left(1+\frac{R_f}{R_g}\right)V_{in}` },
+    { label: 'Seguidor', latex: L`V_{out}=V_{in}` },
+    { label: 'Reglas de oro', latex: L`V_+\approx V_-,\qquad I_+=I_-=0` },
+  ],
+  summary: 'Un amplificador de ganancia enorme que, con retroalimentación, da la ganancia exacta que fijan dos resistencias.',
+  goal: 'Diseñar amplificadores con la ganancia que se quiera usando solo resistencias.',
+  variables: [
+    { symbol: 'V_+,\\ V_-', meaning: 'Entradas no inversora e inversora', unit: 'V' },
+    { symbol: 'R_f', meaning: 'Resistencia de retroalimentación (salida → entrada −)', unit: 'Ω' },
+    { symbol: 'R_{in},\\ R_g', meaning: 'Resistencia de entrada / a tierra', unit: 'Ω' },
+  ],
+  whenToUse: [
+    'Amplificar señales de sensores o de audio, sumar, restar, filtrar.',
+    'Las reglas de oro valen con **retroalimentación negativa** y sin saturar la salida.',
+  ],
+  intuition: [
+    'La ganancia interna es de ~100 000: con que $V_+$ y $V_-$ difieran 0.1 mV la salida ya cambia 10 V. Con retroalimentación negativa, la salida se ajusta sola hasta que las entradas quedan prácticamente iguales.',
+    'En el inversor, $V_+$ está a tierra, así que $V_-$ también queda en 0 V (“tierra virtual”): la corriente de $R_{in}$ tiene que pasar entera por $R_f$.',
+  ],
+  derivation: {
+    intro: 'Inversor, con las reglas de oro:',
+    steps: [
+      { label: 'Tierra virtual', latex: L`V_-=V_+=0` },
+      { label: 'Corriente de entrada', latex: L`I=\frac{V_{in}-0}{R_{in}}` },
+      { label: 'No entra al op-amp: pasa por R_f', latex: L`0-V_{out}=IR_f` },
+      { label: 'Despejamos', latex: L`V_{out}=-\frac{R_f}{R_{in}}V_{in}` },
+    ],
+  },
+  calculators: [
+    calc<{ gain: number; vout: number }>({
+      id: 'inversor',
+      label: 'Inversor',
+      example: '$R_{in}$ = 1 kΩ, $R_f$ = 10 kΩ con 0.5 V de entrada.',
+      inputs: [
+        { kind: 'number', id: 'vin', label: 'Entrada', symbol: 'V_{in}', default: 0.5, unit: 'V', step: 0.1 },
+        { kind: 'number', id: 'rin', label: 'Resistencia de entrada', symbol: 'R_{in}', default: 1000, unit: 'Ω' },
+        { kind: 'number', id: 'rf', label: 'Retroalimentación', symbol: 'R_f', default: 10000, unit: 'Ω' },
+        { kind: 'number', id: 'vsat', label: 'Saturación (alimentación)', symbol: 'V_{sat}', default: 12, unit: 'V' },
+      ],
+      compute: (v) => {
+        positiveList([num(v, 'rin'), num(v, 'rf')], 'R')
+        const gain = -num(v, 'rf') / num(v, 'rin')
+        return { gain, vout: gain * num(v, 'vin') }
+      },
+      steps: (v, r) => [
+        { label: 'Ganancia', latex: L`G=-\frac{R_f}{R_{in}}=-\frac{${fmt(num(v, 'rf'))}}{${fmt(num(v, 'rin'))}}=${fmt(r.gain)}` },
+        { label: 'Salida', latex: L`V_{out}=G\,V_{in}=${fmt(r.vout)}${u('V')}` },
+      ],
+      answer: (_v, r) => L`V_{out}=${fmt(r.vout)}${u('V')}`,
+      interpret: (v, r) => [
+        Math.abs(r.vout) < num(v, 'vsat')
+          ? { tone: 'good', text: `La salida es la entrada multiplicada por $${fmt(Math.abs(r.gain))}$ e **invertida**.` }
+          : { tone: 'warn', text: `El resultado supera la saturación: la salida real se queda en $\\pm${fmt(num(v, 'vsat'))}\\ \\mathrm{V}$ (la señal se “recorta”).` },
+      ],
+      tryInTool: () => ({ path: '/circuit-lab?ejemplo=inversor', label: 'Probar en Circuit Lab' }),
+    }),
+    calc<{ gain: number; vout: number }>({
+      id: 'no-inversor',
+      label: 'No inversor',
+      example: '$R_g$ = 1 kΩ, $R_f$ = 9 kΩ con 0.3 V de entrada.',
+      inputs: [
+        { kind: 'number', id: 'vin', label: 'Entrada', symbol: 'V_{in}', default: 0.3, unit: 'V', step: 0.1 },
+        { kind: 'number', id: 'rg', label: 'Resistencia a tierra', symbol: 'R_g', default: 1000, unit: 'Ω' },
+        { kind: 'number', id: 'rf', label: 'Retroalimentación', symbol: 'R_f', default: 9000, unit: 'Ω' },
+      ],
+      compute: (v) => {
+        positiveList([num(v, 'rg'), num(v, 'rf')], 'R')
+        const gain = 1 + num(v, 'rf') / num(v, 'rg')
+        return { gain, vout: gain * num(v, 'vin') }
+      },
+      steps: (v, r) => [
+        { label: 'Ganancia', latex: L`G=1+\frac{R_f}{R_g}=1+\frac{${fmt(num(v, 'rf'))}}{${fmt(num(v, 'rg'))}}=${fmt(r.gain)}` },
+        { label: 'Salida', latex: L`V_{out}=${fmt(r.vout)}${u('V')}` },
+      ],
+      answer: (_v, r) => L`V_{out}=${fmt(r.vout)}${u('V')}`,
+      interpret: () => [{ tone: 'good', text: 'Misma polaridad que la entrada, y la entrada no toma corriente: ideal para sensores delicados.' }],
+    }),
+  ],
+  commonMistakes: [
+    'Aplicar las reglas de oro a un comparador (sin retroalimentación): ahí la salida se satura.',
+    'Pedir más salida que la alimentación: un op-amp con ±12 V no puede dar 20 V.',
+  ],
+  related: ['leyes-de-kirchhoff', 'ley-de-ohm', 'transistor-bjt'],
+  toolLink: { path: '/circuit-lab?ejemplo=inversor', label: 'Circuit Lab' },
+  keywords: ['op-amp', 'amplificador operacional', 'inversor', 'no inversor', 'seguidor', 'ganancia', 'tierra virtual'],
+}
+
+export const CIRCUITOS: Formula[] = [
+  divisor, serie, paralelo, kirchhoff, rcCircuit, rlCircuit, diodo,
+  alterna, rectificador, bjt, mosfet, opamp,
+]

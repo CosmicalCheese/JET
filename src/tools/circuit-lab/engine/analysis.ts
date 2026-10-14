@@ -13,7 +13,7 @@ import type { Circuit, CircuitComponent, DCSolution } from './types.ts'
 interface Tap {
   component: CircuitComponent
   terminal: number
-  /** Net del otro terminal. */
+  /** Net del otro terminal (solo componentes de 2 terminales; −1 si tiene más). */
   other: number
 }
 
@@ -27,12 +27,14 @@ function tapsByNet(circuit: Circuit, sol: DCSolution): Map<number, Tap[]> {
   const taps = new Map<number, Tap[]>()
   for (const c of circuit.components) {
     if (c.kind === 'ground' || c.kind === 'voltmeter' || c.kind === 'switch') continue
-    const [a, b] = sol.terminalNets[c.id]
-    if (a === b) continue
-    for (const [terminal, net, other] of [[0, a, b], [1, b, a]]) {
+    const tn = sol.terminalNets[c.id]
+    if (tn.length === 2 && tn[0] === tn[1]) continue
+    tn.forEach((net, terminal) => {
+      // Las entradas de un op-amp no llevan corriente.
+      if (c.kind === 'opamp' && terminal < 2) return
       if (!taps.has(net)) taps.set(net, [])
-      taps.get(net)!.push({ component: c, terminal, other })
-    }
+      taps.get(net)!.push({ component: c, terminal, other: tn.length === 2 ? tn[1 - terminal] : -1 })
+    })
   }
   return taps
 }
@@ -149,15 +151,18 @@ export interface NodeBalance {
 /** Ley de corrientes de Kirchhoff en un net: lo que entra es lo que sale. */
 export function nodeBalance(circuit: Circuit, sol: DCSolution, net: number): NodeBalance {
   const flows = (tapsByNet(circuit, sol).get(net) ?? [])
-    .map((t) => {
-      const i = sol.components[t.component.id].current // entra por el terminal 0
-      return { id: t.component.id, current: t.terminal === 0 ? -i : i }
-    })
-    .filter((f) => Math.abs(f.current) > 1e-15)
+    .map((t) => ({ id: t.component.id, current: -sol.components[t.component.id].terminalCurrents[t.terminal] }))
+  // La salida de un op-amp toma (o devuelve) su corriente de la alimentación, que está en GND.
+  if (net === sol.groundNet) {
+    for (const c of circuit.components) {
+      if (c.kind === 'opamp') flows.push({ id: `${c.id} (alimentación)`, current: sol.components[c.id].terminalCurrents[2] })
+    }
+  }
+  const nonzero = flows.filter((f) => Math.abs(f.current) > 1e-15)
   return {
-    flows,
-    entering: flows.filter((f) => f.current > 0).reduce((s, f) => s + f.current, 0),
-    leaving: -flows.filter((f) => f.current < 0).reduce((s, f) => s + f.current, 0),
+    flows: nonzero,
+    entering: nonzero.filter((f) => f.current > 0).reduce((s, f) => s + f.current, 0),
+    leaving: -nonzero.filter((f) => f.current < 0).reduce((s, f) => s + f.current, 0),
   }
 }
 

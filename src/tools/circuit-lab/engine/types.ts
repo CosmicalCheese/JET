@@ -26,6 +26,10 @@ export type ComponentKind =
   | 'diode'
   | 'led'
   | 'zener'
+  | 'ac-source'
+  | 'bjt'
+  | 'mosfet'
+  | 'opamp'
 
 interface ComponentBase {
   id: string
@@ -106,6 +110,51 @@ export interface Zener extends ComponentBase {
   zenerVoltage: number
 }
 
+/**
+ * Fuente senoidal: V(t) = offset + amplitude · sen(2π·frequency·t + phase).
+ * Terminal 0 = +, terminal 1 = −.
+ */
+export interface AcSource extends ComponentBase {
+  kind: 'ac-source'
+  /** V pico */
+  amplitude: number
+  /** Hz, > 0 */
+  frequency: number
+  /** V */
+  offset: number
+  /** grados */
+  phase: number
+}
+
+/** Transistor bipolar. Terminales: 0 = colector, 1 = base, 2 = emisor. */
+export interface Bjt extends ComponentBase {
+  kind: 'bjt'
+  polarity: 'npn' | 'pnp'
+  /** Ganancia de corriente β = Ic/Ib en zona activa, > 0 */
+  beta: number
+}
+
+/** MOSFET de enriquecimiento. Terminales: 0 = drenador, 1 = compuerta, 2 = fuente. */
+export interface Mosfet extends ComponentBase {
+  kind: 'mosfet'
+  polarity: 'n' | 'p'
+  /** Voltaje de umbral |Vth| (V), > 0 */
+  threshold: number
+  /** Transconductancia k (A/V²): Id = k/2 · (Vgs − Vth)² en saturación, > 0 */
+  k: number
+}
+
+/**
+ * Amplificador operacional (ganancia 10⁵, se satura en ±saturation).
+ * Terminales: 0 = entrada + (no inversora), 1 = entrada − (inversora), 2 = salida.
+ * La salida se mide respecto a GND: la alimentación está implícita.
+ */
+export interface OpAmp extends ComponentBase {
+  kind: 'opamp'
+  /** V, > 0 */
+  saturation: number
+}
+
 export type CircuitComponent =
   | Resistor
   | VoltageSource
@@ -119,6 +168,10 @@ export type CircuitComponent =
   | Diode
   | Led
   | Zener
+  | AcSource
+  | Bjt
+  | Mosfet
+  | OpAmp
 
 /** Extremo de un cable: el terminal de un componente o una unión libre. */
 export type Endpoint =
@@ -140,9 +193,13 @@ export interface Circuit {
 // ─── Resultados ──────────────────────────────────────────────────────────────
 
 export interface ComponentState {
+  /** 2 terminales: V(0) − V(1). Transistor: V_CE o V_DS. Op-amp: V_salida respecto a GND. */
   voltage: number
+  /** 2 terminales: del terminal 0 al 1. Transistor: I_C o I_D. Op-amp: corriente que entrega la salida. */
   current: number
   power: number
+  /** Corriente que entra al componente por cada terminal. */
+  terminalCurrents: number[]
 }
 
 export type IssueCode =
@@ -155,6 +212,7 @@ export type IssueCode =
   | 'floating'
   | 'singular'
   | 'no-convergence'
+  | 'needs-ground'
 
 export interface CircuitIssue {
   code: IssueCode
@@ -177,6 +235,10 @@ export interface DCSolution {
   wireCurrents: Record<string, number>
   /** Avisos no fatales (p. ej. partes flotantes sin referencia a GND). */
   warnings: CircuitIssue[]
+  /** Net de GND, o null si no hay. */
+  groundNet: number | null
+  /** Voltajes de control de los dispositivos no lineales (punto de partida del siguiente cálculo). */
+  guess: DiodeGuess
 }
 
 export interface DCFailure {
@@ -199,6 +261,10 @@ export const TERMINAL_COUNT: Record<ComponentKind, number> = {
   diode: 2,
   led: 2,
   zener: 2,
+  'ac-source': 2,
+  bjt: 3,
+  mosfet: 3,
+  opamp: 3,
 }
 
 // ─── Simulación en el tiempo ─────────────────────────────────────────────────
@@ -206,7 +272,10 @@ export const TERMINAL_COUNT: Record<ComponentKind, number> = {
 /** Lo que "recuerdan" los elementos reactivos: voltaje de cada capacitor y corriente de cada bobina. */
 export type ReactiveState = Record<string, number>
 
-/** Voltaje inicial de cada diodo para Newton-Raphson (normalmente, el de la solución anterior). */
+/**
+ * Punto de partida de Newton-Raphson para cada dispositivo no lineal
+ * (normalmente, la solución anterior). Claves "id#k": k-ésimo voltaje de control.
+ */
 export type DiodeGuess = Record<string, number>
 
 /**
@@ -214,5 +283,6 @@ export type DiodeGuess = Record<string, number>
  * transient: un paso de tiempo `dt` partiendo de `state`.
  */
 export type SolveMode =
-  | { kind: 'dc'; guess?: DiodeGuess }
-  | { kind: 'transient'; dt: number; state: ReactiveState; guess?: DiodeGuess }
+  | { kind: 'dc'; guess?: DiodeGuess; time?: number }
+  /** `time`: instante al final del paso (para las fuentes que dependen del tiempo). */
+  | { kind: 'transient'; dt: number; state: ReactiveState; guess?: DiodeGuess; time?: number }
