@@ -5,7 +5,7 @@
  * con la fórmula que el estudiante conoce.
  */
 
-import { solveDC } from './dc.ts'
+import { isGroundReferenced, solveDC } from './dc.ts'
 import { UnionFind } from './netlist.ts'
 import type { Circuit, CircuitComponent, DCSolution } from './types.ts'
 
@@ -152,10 +152,12 @@ export interface NodeBalance {
 export function nodeBalance(circuit: Circuit, sol: DCSolution, net: number): NodeBalance {
   const flows = (tapsByNet(circuit, sol).get(net) ?? [])
     .map((t) => ({ id: t.component.id, current: -sol.components[t.component.id].terminalCurrents[t.terminal] }))
-  // La salida de un op-amp toma (o devuelve) su corriente de la alimentación, que está en GND.
+  // Op-amps y compuertas toman (o devuelven) su corriente de la alimentación, que está en GND.
   if (net === sol.groundNet) {
     for (const c of circuit.components) {
-      if (c.kind === 'opamp') flows.push({ id: `${c.id} (alimentación)`, current: sol.components[c.id].terminalCurrents[2] })
+      if (isGroundReferenced(c)) {
+        flows.push({ id: `${c.id} (alimentación)`, current: sol.components[c.id].terminalCurrents.reduce((a, b) => a + b, 0) })
+      }
     }
   }
   const nonzero = flows.filter((f) => Math.abs(f.current) > 1e-15)

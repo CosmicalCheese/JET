@@ -6,7 +6,7 @@
 import type { ComponentKind } from '../engine/types.ts'
 import type { Placed } from './model.ts'
 import { LED_HEX, METER_LETTER } from './labels.ts'
-import { TERMINAL_COUNT, type LedColor } from '../engine/types.ts'
+import { TERMINAL_COUNT, type GateOp, type LedColor } from '../engine/types.ts'
 
 /** Tamaño de una celda de la cuadrícula, en px. */
 export const G = 20
@@ -15,17 +15,19 @@ const L = 2 * G // medio largo en px
 const BODY = '#3f3f46'
 
 interface SymbolProps {
-  c: Placed | { kind: ComponentKind; closed?: boolean; id?: string; color?: LedColor; polarity?: string }
+  c: Placed | { kind: ComponentKind; closed?: boolean; id?: string; color?: LedColor; polarity?: string; op?: GateOp; high?: boolean }
   /** Color de cada terminal (voltaje de su nodo). */
   leads?: string[]
   /** id único para el degradado de la resistencia. */
   gradientId?: string
   /** Brillo del LED, de 0 a 1. */
   glow?: number
+  /** Nivel lógico que muestra una sonda (undefined = sin dato). */
+  level?: number
 }
 
-export function ComponentSymbol({ c, leads = [BODY, BODY], gradientId, glow = 0 }: SymbolProps) {
-  const [c0 = BODY, c1 = c0, c2 = c1] = leads
+export function ComponentSymbol({ c, leads = [BODY, BODY], gradientId, glow = 0, level }: SymbolProps) {
+  const [c0 = BODY, c1 = c0, c2 = c1, c3 = c2] = leads
   const polarity = 'polarity' in c ? c.polarity : undefined
   const lead = (x1: number, x2: number, color: string) => (
     <line x1={x1} y1={0} x2={x2} y2={0} stroke={color} strokeWidth={3} strokeLinecap="round" />
@@ -200,6 +202,65 @@ export function ComponentSymbol({ c, leads = [BODY, BODY], gradientId, glow = 0 
           <text x={-18} y={25} fontSize={14} fontWeight={700} fill={BODY} textAnchor="middle">+</text>
         </g>
       )
+    case 'gate':
+      return <GateSymbol op={('op' in c && c.op) || 'and'} leads={[c0, c1, c2]} />
+    case 'not':
+      return (
+        <g>
+          {lead(-L, -16, c0)}
+          {lead(20, L, c1)}
+          <polygon points="-16,-15 -16,15 12,0" fill="white" stroke={BODY} strokeWidth={2.5} strokeLinejoin="round" />
+          <circle cx={16} r={4} fill="white" stroke={BODY} strokeWidth={2.2} />
+        </g>
+      )
+    case 'logic-input': {
+      const on = 'high' in c && !!c.high
+      return (
+        <g>
+          {lead(22, L, c0)}
+          <rect x={-22} y={-16} width={44} height={32} rx={6} fill={on ? '#dcfce7' : 'white'} stroke={BODY} strokeWidth={2.5} />
+          <text y={7} fontSize={20} fontWeight={800} fill={on ? '#15803d' : '#71717a'} textAnchor="middle">{on ? '1' : '0'}</text>
+        </g>
+      )
+    }
+    case 'clock':
+      return (
+        <g>
+          {lead(22, L, c0)}
+          <rect x={-22} y={-16} width={44} height={32} rx={6} fill="white" stroke={BODY} strokeWidth={2.5} />
+          <polyline points="-14,6 -7,6 -7,-6 0,-6 0,6 7,6 7,-6 14,-6" fill="none" stroke={BODY} strokeWidth={2.2} />
+        </g>
+      )
+    case 'probe': {
+      const on = level === 1
+      return (
+        <g>
+          {lead(-L, -16, c0)}
+          <circle r={16} fill={on ? '#ef4444' : 'white'} stroke={BODY} strokeWidth={2.5} />
+          {on && <circle r={22} fill="#ef4444" opacity={0.2} />}
+          <text y={7} fontSize={18} fontWeight={800} fill={on ? 'white' : '#71717a'} textAnchor="middle">
+            {level === undefined ? '?' : level}
+          </text>
+        </g>
+      )
+    }
+    case 'dff':
+      // D (−40,−20), CLK (−40,20), Q (40,−20), Q̄ (40,20)
+      return (
+        <g>
+          <line x1={-40} y1={-20} x2={-26} y2={-20} stroke={c0} strokeWidth={3} strokeLinecap="round" />
+          <line x1={-40} y1={20} x2={-26} y2={20} stroke={c1} strokeWidth={3} strokeLinecap="round" />
+          <line x1={26} y1={-20} x2={40} y2={-20} stroke={c2} strokeWidth={3} strokeLinecap="round" />
+          <line x1={26} y1={20} x2={40} y2={20} stroke={c3} strokeWidth={3} strokeLinecap="round" />
+          <rect x={-26} y={-38} width={52} height={76} rx={4} fill="white" stroke={BODY} strokeWidth={2.5} />
+          <polyline points="-26,13 -18,20 -26,27" fill="none" stroke={BODY} strokeWidth={2} />
+          <g fontSize={12} fontWeight={700} fill={BODY}>
+            <text x={-20} y={-16}>D</text>
+            <text x={20} y={-16} textAnchor="end">Q</text>
+            <text x={20} y={24} textAnchor="end">Q̄</text>
+          </g>
+        </g>
+      )
     case 'voltmeter':
     case 'ammeter':
       return (
@@ -213,12 +274,33 @@ export function ComponentSymbol({ c, leads = [BODY, BODY], gradientId, glow = 0 
   }
 }
 
+/** Compuerta de dos entradas: A (−40,−20), B (−40,20), Y (40,0). */
+function GateSymbol({ op, leads: [ca, cb, cy] }: { op: GateOp; leads: string[] }) {
+  const negated = op === 'nand' || op === 'nor' || op === 'xnor'
+  const orLike = op !== 'and' && op !== 'nand'
+  const body = orLike
+    ? 'M -24 -22 Q -10 0 -24 22 Q 8 22 26 0 Q 8 -22 -24 -22 Z'
+    : 'M -24 -22 H 4 A 22 22 0 0 1 4 22 H -24 Z'
+  const outX = negated ? 34 : 26
+  const inX = orLike ? -18 : -24
+  return (
+    <g>
+      <line x1={-40} y1={-20} x2={inX} y2={-20} stroke={ca} strokeWidth={3} strokeLinecap="round" />
+      <line x1={-40} y1={20} x2={inX} y2={20} stroke={cb} strokeWidth={3} strokeLinecap="round" />
+      <line x1={outX} y1={0} x2={40} y2={0} stroke={cy} strokeWidth={3} strokeLinecap="round" />
+      <path d={body} fill="white" stroke={BODY} strokeWidth={2.5} strokeLinejoin="round" />
+      {(op === 'xor' || op === 'xnor') && <path d="M -31 -22 Q -17 0 -31 22" fill="none" stroke={BODY} strokeWidth={2.5} />}
+      {negated && <circle cx={30} r={4} fill="white" stroke={BODY} strokeWidth={2.2} />}
+    </g>
+  )
+}
+
 /** Icono pequeño para la paleta. */
 export function SymbolIcon({ kind, size = 28 }: { kind: ComponentKind; size?: number }) {
   const letter = METER_LETTER[kind]
   return (
     <svg width={size} height={size}
-      viewBox={kind === 'ground' ? '-24 -8 48 48' : TERMINAL_COUNT[kind] === 3 ? '-44 -44 88 88' : '-44 -24 88 48'}>
+      viewBox={kind === 'ground' ? '-24 -8 48 48' : TERMINAL_COUNT[kind] === 2 ? '-44 -24 88 48' : '-44 -44 88 88'}>
       <ComponentSymbol c={{ kind, closed: true }} />
       {letter && (
         <text y={5} fontSize={14} fontWeight={700} fill={BODY} textAnchor="middle">{letter}</text>

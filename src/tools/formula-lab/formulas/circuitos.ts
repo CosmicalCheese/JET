@@ -994,7 +994,148 @@ const opamp: Formula = {
   keywords: ['op-amp', 'amplificador operacional', 'inversor', 'no inversor', 'seguidor', 'ganancia', 'tierra virtual'],
 }
 
+// ═══ Electrónica digital ═════════════════════════════════════════════════════
+
+const GATES = ['AND', 'OR', 'XOR', 'NAND', 'NOR', 'XNOR'] as const
+function gateValue(g: number, a: number, b: number): number {
+  const base = [a & b, a | b, a ^ b][g % 3]
+  return g < 3 ? base : 1 - base
+}
+const GATE_LATEX = [L`A\cdot B`, L`A+B`, L`A\oplus B`, L`\overline{A\cdot B}`, L`\overline{A+B}`, L`\overline{A\oplus B}`]
+
+const compuertas: Formula = {
+  id: 'compuertas-logicas',
+  name: 'Compuertas lógicas',
+  category: 'digital',
+  latex: L`A\cdot B\qquad A+B\qquad A\oplus B\qquad \overline{A}`,
+  forms: [
+    { label: 'De Morgan', latex: L`\overline{A\cdot B}=\overline A+\overline B,\qquad \overline{A+B}=\overline A\cdot\overline B` },
+  ],
+  summary: 'Operaciones con 0 y 1 (falso y verdadero) hechas con circuitos.',
+  goal: 'Saber qué da cada compuerta para cualquier combinación de entradas y cómo se combinan para tomar decisiones.',
+  variables: [
+    { symbol: 'A,\\ B', meaning: 'Entradas: 0 (0 V) o 1 (5 V)' },
+    { symbol: 'A\\cdot B', meaning: 'AND (Y): 1 solo si ambas son 1' },
+    { symbol: 'A+B', meaning: 'OR (O): 1 si al menos una es 1' },
+    { symbol: 'A\\oplus B', meaning: 'XOR (O exclusivo): 1 si son distintas' },
+    { symbol: '\\overline{X}', meaning: 'NOT: lo contrario de X' },
+  ],
+  whenToUse: [
+    'Todo circuito digital (computadoras, calculadoras, alarmas) se arma con estas operaciones.',
+    'Las tablas de verdad describen un circuito combinacional completo: para cada entrada, qué salida da.',
+  ],
+  intuition: [
+    'AND es “y”: la alarma suena si la puerta está abierta **y** el sistema está armado.',
+    'OR es “o”: la luz se enciende si se pulsa el botón de la entrada **o** el de la cocina.',
+    'XOR es “o uno o el otro, pero no los dos”: es la suma de dos bits sin el acarreo.',
+  ],
+  calculators: [
+    calc<{ out: number }>({
+      id: 'tabla',
+      label: 'Tabla de verdad',
+      example: 'una compuerta XOR con A = 1 y B = 0.',
+      inputs: [
+        { kind: 'select', id: 'g', label: 'Compuerta', symbol: 'G', default: 2, options: GATES.map((label, value) => ({ value, label })) },
+        { kind: 'select', id: 'a', label: 'Entrada A', symbol: 'A', default: 1, options: [{ value: 0, label: '0' }, { value: 1, label: '1' }] },
+        { kind: 'select', id: 'b', label: 'Entrada B', symbol: 'B', default: 0, options: [{ value: 0, label: '0' }, { value: 1, label: '1' }] },
+      ],
+      compute: (v) => ({ out: gateValue(num(v, 'g'), num(v, 'a'), num(v, 'b')) }),
+      steps: (v) => [
+        { label: `${GATES[num(v, 'g')]}`, latex: L`Y=${GATE_LATEX[num(v, 'g')]}` },
+        ...[[0, 0], [0, 1], [1, 0], [1, 1]].map(([a, b]) => ({
+          label: a === num(v, 'a') && b === num(v, 'b') ? '← tus entradas' : undefined,
+          latex: L`A=${a},\ B=${b}\ \Rightarrow\ Y=${gateValue(num(v, 'g'), a, b)}`,
+        })),
+      ],
+      answer: (_v, r) => L`Y=${r.out}`,
+      interpret: (v, r) => [
+        { tone: 'good', text: `${GATES[num(v, 'g')]} con A = ${num(v, 'a')} y B = ${num(v, 'b')} da **${r.out}** (${r.out ? '5 V' : '0 V'} en la salida).` },
+      ],
+      tryInTool: () => ({ path: '/circuit-lab?ejemplo=compuertas', label: 'Probar en Circuit Lab' }),
+    }),
+  ],
+  commonMistakes: ['Confundir OR con XOR: con las dos entradas en 1, OR da 1 y XOR da 0.'],
+  related: ['contador-binario'],
+  toolLink: { path: '/circuit-lab?ejemplo=compuertas', label: 'Circuit Lab' },
+  keywords: ['compuertas', 'logica', 'and', 'or', 'xor', 'nand', 'nor', 'not', 'booleana', 'tabla de verdad', 'de morgan'],
+}
+
+const contador: Formula = {
+  id: 'contador-binario',
+  name: 'Flip-flops y contadores binarios',
+  category: 'digital',
+  latex: L`f_k=\frac{f_{CLK}}{2^k}`,
+  forms: [
+    { label: 'Cuenta máxima con n bits', latex: L`2^n-1` },
+    { label: 'Valor de un número binario', latex: L`N=\sum_k b_k\,2^k` },
+  ],
+  summary: 'Cada flip-flop guarda un bit; encadenados cuentan pulsos en binario y dividen la frecuencia entre 2 en cada etapa.',
+  goal: 'Saber hasta cuánto cuenta un contador, qué frecuencia sale de cada bit y cómo leer el número binario.',
+  variables: [
+    { symbol: 'f_{CLK}', meaning: 'Frecuencia del reloj', unit: 'Hz' },
+    { symbol: 'f_k', meaning: 'Frecuencia del bit k (k = 1 es el menos significativo)', unit: 'Hz' },
+    { symbol: 'n', meaning: 'Número de bits (flip-flops)' },
+    { symbol: 'b_k', meaning: 'Valor (0 o 1) del bit de peso $2^k$' },
+  ],
+  whenToUse: [
+    'Contar eventos, dividir frecuencias (un reloj de cuarzo de 32 768 Hz entre $2^{15}$ da 1 pulso por segundo).',
+  ],
+  intuition: [
+    'Un flip-flop D solo “mira” su entrada en el flanco de subida del reloj; el resto del tiempo **recuerda**. Es la memoria más pequeña posible: 1 bit.',
+    'Con $\\overline Q$ conectado a $D$ cambia en cada flanco: da un pulso por cada dos del reloj. Encadenando, cada etapa vuelve a dividir entre 2: eso es contar en binario.',
+  ],
+  calculators: [
+    calc<{ max: number; freqs: number[] }>({
+      id: 'contador',
+      label: 'Contador de n bits',
+      example: 'un contador de 4 bits con un reloj de 1 Hz.',
+      inputs: [
+        { kind: 'number', id: 'n', label: 'Bits', symbol: 'n', default: 4, step: 1 },
+        { kind: 'number', id: 'f', label: 'Frecuencia del reloj', symbol: 'f_{CLK}', default: 1, unit: 'Hz' },
+      ],
+      compute: (v) => {
+        const n = num(v, 'n')
+        if (!Number.isInteger(n) || n < 1 || n > 32) fail('El número de bits debe ser un entero entre 1 y 32.')
+        positiveList([num(v, 'f')], 'f')
+        return { max: 2 ** n - 1, freqs: Array.from({ length: n }, (_, k) => num(v, 'f') / 2 ** (k + 1)) }
+      },
+      steps: (v, r) => [
+        { label: 'Cuenta máxima', latex: L`2^{${num(v, 'n')}}-1=${r.max}` },
+        ...r.freqs.map((f, k) => ({ label: `Bit ${k} (peso ${2 ** k})`, latex: L`f=\frac{${fmt(num(v, 'f'))}}{2^{${k + 1}}}=${fmt(f)}${u('Hz')}` })),
+      ],
+      answer: (_v, r) => L`\text{cuenta de }0\text{ a }${r.max}`,
+      interpret: (v, r) => [
+        { tone: 'good', text: `Cuenta de 0 a ${r.max} y vuelve a empezar cada $${fmt((r.max + 1) / num(v, 'f'))}$ s.` },
+      ],
+      tryInTool: () => ({ path: '/circuit-lab?ejemplo=contador', label: 'Probar en Circuit Lab' }),
+    }),
+    calc<{ bits: string; terms: string[] }>({
+      id: 'binario',
+      label: 'Decimal a binario',
+      example: 'el número 13.',
+      inputs: [{ kind: 'number', id: 'n', label: 'Número decimal', symbol: 'N', default: 13, step: 1 }],
+      compute: (v) => {
+        const n = num(v, 'n')
+        if (!Number.isInteger(n) || n < 0 || n > 2 ** 31) fail('Escribe un entero entre 0 y 2³¹.')
+        const bits = n.toString(2)
+        const terms = [...bits].map((b, i) => `${b}\\cdot2^{${bits.length - 1 - i}}`)
+        return { bits, terms }
+      },
+      steps: (v, r) => [
+        { label: 'Cada bit vale una potencia de 2', latex: L`${fmt(num(v, 'n'))}=${r.terms.join('+')}` },
+      ],
+      answer: (v, r) => L`${fmt(num(v, 'n'))}_{10}=${r.bits}_{2}`,
+      interpret: (_v, r) => [{ tone: 'info', text: `Se necesitan ${r.bits.length} bits (${r.bits.length} flip-flops) para guardarlo.` }],
+    }),
+  ],
+  commonMistakes: ['Leer los bits al revés: el de la derecha es el menos significativo ($2^0$).'],
+  related: ['compuertas-logicas'],
+  toolLink: { path: '/circuit-lab?ejemplo=contador', label: 'Circuit Lab' },
+  keywords: ['flip-flop', 'contador', 'binario', 'reloj', 'bit', 'memoria', 'divisor de frecuencia'],
+}
+
 export const CIRCUITOS: Formula[] = [
   divisor, serie, paralelo, kirchhoff, rcCircuit, rlCircuit, diodo,
   alterna, rectificador, bjt, mosfet, opamp,
+  compuertas, contador,
 ]

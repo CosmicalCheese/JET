@@ -57,8 +57,33 @@ export function localTerminals(kind: ComponentKind): Pt[] {
       return [{ x: 1, y: -2 }, { x: -2, y: 0 }, { x: 1, y: 2 }]
     case 'opamp': // +, −, salida
       return [{ x: -2, y: 1 }, { x: -2, y: -1 }, { x: 2, y: 0 }]
+    case 'gate': // A, B, Y
+      return [{ x: -2, y: -1 }, { x: -2, y: 1 }, { x: 2, y: 0 }]
+    case 'logic-input':
+    case 'clock': // salida a la derecha
+      return [{ x: 2, y: 0 }]
+    case 'probe': // entrada a la izquierda
+      return [{ x: -2, y: 0 }]
+    case 'dff': // D, CLK, Q, Q̄
+      return [{ x: -2, y: -1 }, { x: -2, y: 1 }, { x: 2, y: -1 }, { x: 2, y: 1 }]
     default:
       return [{ x: -HALF, y: 0 }, { x: HALF, y: 0 }]
+  }
+}
+
+/** Caja del cuerpo en coordenadas locales (celdas): [x0, y0, x1, y1]. Para seleccionar y resaltar. */
+export function bodyBox(kind: ComponentKind): [number, number, number, number] {
+  switch (kind) {
+    case 'ground': return [-0.8, -0.3, 0.8, 1.4]
+    case 'bjt':
+    case 'mosfet':
+    case 'opamp':
+    case 'gate': return [-1.6, -1.6, 1.6, 1.6]
+    case 'dff': return [-1.4, -2, 1.4, 2]
+    case 'logic-input':
+    case 'clock': return [-1.3, -1, 1.3, 1]
+    case 'probe': return [-1.3, -1, 1, 1]
+    default: return [-(HALF - 0.4), -1, HALF - 0.4, 1]
   }
 }
 
@@ -203,6 +228,12 @@ export const ID_PREFIX: Record<ComponentKind, string> = {
   bjt: 'Q',
   mosfet: 'M',
   opamp: 'U',
+  gate: 'G',
+  not: 'N',
+  'logic-input': 'IN',
+  clock: 'CLK',
+  probe: 'P',
+  dff: 'FF',
 }
 
 export function nextId(taken: Iterable<string>, prefix: string): string {
@@ -229,6 +260,12 @@ export function createComponent(kind: ComponentKind, id: string, at: Pt, rot: Ro
     case 'bjt': return { ...base, kind, polarity: 'npn', beta: 100 }
     case 'mosfet': return { ...base, kind, polarity: 'n', threshold: 2, k: 0.1 }
     case 'opamp': return { ...base, kind, saturation: 12 }
+    case 'gate': return { ...base, kind, op: 'and' }
+    case 'not': return { ...base, kind }
+    case 'logic-input': return { ...base, kind, high: false }
+    case 'clock': return { ...base, kind, frequency: 1 }
+    case 'probe': return { ...base, kind }
+    case 'dff': return { ...base, kind }
   }
 }
 

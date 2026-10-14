@@ -22,6 +22,7 @@ export type CategoryId =
   | 'mecanica'
   | 'energia'
   | 'electricidad'
+  | 'digital'
   | 'termodinamica'
   | 'ondas'
   | 'fluidos'

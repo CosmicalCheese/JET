@@ -22,9 +22,13 @@ import { useSimulation } from './useSimulation.ts'
 import { formatSI } from './editor/units.ts'
 
 const STORAGE_KEY = 'jet-circuit-lab'
-const PALETTE: ComponentKind[] = [
-  'voltage-source', 'ac-source', 'resistor', 'capacitor', 'inductor', 'diode', 'led', 'zener',
-  'bjt', 'mosfet', 'opamp', 'ground', 'switch', 'ammeter', 'voltmeter', 'current-source',
+/** Paleta por categorías; cada grupo se dibuja como un bloque que no se parte al cambiar de línea. */
+const PALETTE: { label: string; kinds: ComponentKind[] }[] = [
+  { label: 'Fuentes', kinds: ['voltage-source', 'ac-source', 'current-source', 'ground'] },
+  { label: 'Pasivos', kinds: ['resistor', 'capacitor', 'inductor', 'switch'] },
+  { label: 'Medición', kinds: ['ammeter', 'voltmeter'] },
+  { label: 'Semiconductores', kinds: ['diode', 'led', 'zener', 'bjt', 'mosfet', 'opamp'] },
+  { label: 'Digital', kinds: ['logic-input', 'clock', 'gate', 'not', 'dff', 'probe'] },
 ]
 
 /** Velocidades: segundos simulados por cada segundo real. */
@@ -117,7 +121,10 @@ export function CircuitLabPage() {
   // más corta dure ~1 s real.
   const autoScale = useMemo(() => {
     const times = translation.circuit.components
-      .map((c) => (c.kind === 'ac-source' ? 1 / c.frequency : isReactive(c) ? firstOrder(translation.circuit, c.id)?.tau ?? NaN : NaN))
+      .map((c) =>
+        c.kind === 'ac-source' || c.kind === 'clock' ? 1 / c.frequency
+          : isReactive(c) ? firstOrder(translation.circuit, c.id)?.tau ?? NaN
+          : NaN)
       .filter((t) => Number.isFinite(t) && t > 0)
     return times.length ? niceScale(Math.min(...times)) : 1
   }, [translation])
@@ -186,6 +193,7 @@ export function CircuitLabPage() {
   const toggleSwitch = (id: string) => {
     const c = doc.components.find((k) => k.id === id)
     if (c?.kind === 'switch') updateComponent({ ...c, closed: !c.closed })
+    else if (c?.kind === 'logic-input') updateComponent({ ...c, high: !c.high })
   }
 
   const exportJson = () => {
@@ -228,7 +236,7 @@ export function CircuitLabPage() {
       setSelection(null)
     } else if (e.key === 'w' || e.key === 'W') {
       setTool('wire')
-    } else if (e.key === ' ' && selected?.kind === 'switch') {
+    } else if (e.key === ' ' && (selected?.kind === 'switch' || selected?.kind === 'logic-input')) {
       e.preventDefault()
       toggleSwitch(selected.id)
     }
@@ -247,8 +255,8 @@ export function CircuitLabPage() {
         if (t !== 'select' && t !== 'wire') setSelection(null)
       }}
       className={cn(
-        'h-10 min-w-10 px-1.5 inline-flex items-center justify-center rounded-lg border transition-colors',
-        tool === t ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white border-zinc-200 text-zinc-600 hover:bg-zinc-50',
+        'h-9 min-w-9 px-1 inline-flex items-center justify-center rounded-lg border transition-colors',
+        tool === t ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white border-transparent text-zinc-600 hover:bg-zinc-100',
       )}
     >
       {icon}
@@ -289,18 +297,34 @@ export function CircuitLabPage() {
       </div>
 
       {/* Barra de herramientas */}
+      {/* Herramientas y acciones */}
       <div className="flex flex-wrap items-center gap-1.5">
-        {toolButton('select', 'Seleccionar y mover (Esc)', <MousePointer2 size={17} />)}
-        {toolButton('wire', 'Cable (W)', <Spline size={17} />)}
-        <span className="w-px h-7 bg-zinc-200 mx-1" />
-        {PALETTE.map((k) => toolButton(k, KIND_LABEL[k], <SymbolIcon kind={k} />))}
-        <span className="w-px h-7 bg-zinc-200 mx-1" />
-        <ActionButton title="Girar (R)" icon={<RotateCw size={16} />} onClick={rotate} disabled={!selected && (tool === 'select' || tool === 'wire')} />
-        <ActionButton title="Borrar (Supr)" icon={<Trash2 size={16} />} onClick={deleteSelection} disabled={!selection} />
-        <ActionButton title="Deshacer (⌘Z)" icon={<Undo2 size={16} />} onClick={undo} disabled={!history.past.length} />
-        <ActionButton title="Rehacer (⇧⌘Z)" icon={<Redo2 size={16} />} onClick={redo} disabled={!history.future.length} />
-        <ActionButton title="Corriente animada" icon={<Zap size={16} />} onClick={() => setAnimate((a) => !a)} active={animate} />
-        <ActionButton title="Encuadrar" icon={<Maximize size={16} />} onClick={() => setFitKey((k) => k + 1)} />
+        <div className="inline-flex gap-1 rounded-xl border border-zinc-200 bg-white p-1">
+          {toolButton('select', 'Seleccionar y mover (Esc)', <MousePointer2 size={17} />)}
+          {toolButton('wire', 'Cable (W)', <Spline size={17} />)}
+        </div>
+        <div className="inline-flex gap-1 rounded-xl border border-zinc-200 bg-white p-1">
+          <ActionButton title="Girar (R)" icon={<RotateCw size={16} />} onClick={rotate} disabled={!selected && (tool === 'select' || tool === 'wire')} />
+          <ActionButton title="Borrar (Supr)" icon={<Trash2 size={16} />} onClick={deleteSelection} disabled={!selection} />
+          <ActionButton title="Deshacer (⌘Z)" icon={<Undo2 size={16} />} onClick={undo} disabled={!history.past.length} />
+          <ActionButton title="Rehacer (⇧⌘Z)" icon={<Redo2 size={16} />} onClick={redo} disabled={!history.future.length} />
+        </div>
+        <div className="inline-flex gap-1 rounded-xl border border-zinc-200 bg-white p-1">
+          <ActionButton title="Corriente animada" icon={<Zap size={16} />} onClick={() => setAnimate((a) => !a)} active={animate} />
+          <ActionButton title="Encuadrar" icon={<Maximize size={16} />} onClick={() => setFitKey((k) => k + 1)} />
+        </div>
+      </div>
+
+      {/* Componentes, por categoría */}
+      <div className="flex flex-wrap items-start gap-2">
+        {PALETTE.map((group) => (
+          <div key={group.label} className="rounded-xl border border-zinc-200 bg-white px-1.5 pt-1 pb-1.5">
+            <p className="px-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">{group.label}</p>
+            <div className="flex gap-0.5">
+              {group.kinds.map((k) => toolButton(k, KIND_LABEL[k], <SymbolIcon kind={k} />))}
+            </div>
+          </div>
+        ))}
       </div>
 
       {sim.active && (
@@ -424,8 +448,8 @@ function ActionButton({ title, icon, onClick, disabled = false, active = false }
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        'h-10 w-10 inline-flex items-center justify-center rounded-lg border transition-colors disabled:opacity-40',
-        active ? 'bg-amber-50 border-amber-300 text-amber-700' : 'bg-white border-zinc-200 text-zinc-600 hover:bg-zinc-50',
+        'h-9 w-9 inline-flex items-center justify-center rounded-lg border transition-colors disabled:opacity-40',
+        active ? 'bg-amber-50 border-amber-300 text-amber-700' : 'bg-white border-transparent text-zinc-600 hover:bg-zinc-100',
       )}
     >
       {icon}

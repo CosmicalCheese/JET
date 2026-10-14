@@ -30,6 +30,12 @@ export type ComponentKind =
   | 'bjt'
   | 'mosfet'
   | 'opamp'
+  | 'gate'
+  | 'not'
+  | 'logic-input'
+  | 'clock'
+  | 'probe'
+  | 'dff'
 
 interface ComponentBase {
   id: string
@@ -155,6 +161,49 @@ export interface OpAmp extends ComponentBase {
   saturation: number
 }
 
+// ─── Digital ─────────────────────────────────────────────────────────────────
+// Lógica de 5 V referida a GND: entradas de alta impedancia (umbral 2.5 V),
+// salidas de 0 o 5 V con una pequeña resistencia de salida.
+
+export type GateOp = 'and' | 'or' | 'xor' | 'nand' | 'nor' | 'xnor'
+
+/** Compuerta de dos entradas. Terminales: 0 = A, 1 = B, 2 = Y (salida). */
+export interface Gate extends ComponentBase {
+  kind: 'gate'
+  op: GateOp
+}
+
+/** Inversor. Terminales: 0 = A, 1 = Y. */
+export interface Not extends ComponentBase {
+  kind: 'not'
+}
+
+/** Interruptor lógico: su único terminal (salida) da 0 o 5 V. */
+export interface LogicInput extends ComponentBase {
+  kind: 'logic-input'
+  high: boolean
+}
+
+/** Reloj: onda cuadrada de 0/5 V en su único terminal (salida). Empieza en 0. */
+export interface Clock extends ComponentBase {
+  kind: 'clock'
+  /** Hz, > 0 */
+  frequency: number
+}
+
+/** Sonda lógica: muestra 1 o 0 según el voltaje de su único terminal (entrada). */
+export interface Probe extends ComponentBase {
+  kind: 'probe'
+}
+
+/**
+ * Flip-flop D activado por flanco de subida.
+ * Terminales: 0 = D, 1 = CLK (entradas), 2 = Q, 3 = Q̄ (salidas).
+ */
+export interface DFlipFlop extends ComponentBase {
+  kind: 'dff'
+}
+
 export type CircuitComponent =
   | Resistor
   | VoltageSource
@@ -172,6 +221,12 @@ export type CircuitComponent =
   | Bjt
   | Mosfet
   | OpAmp
+  | Gate
+  | Not
+  | LogicInput
+  | Clock
+  | Probe
+  | DFlipFlop
 
 /** Extremo de un cable: el terminal de un componente o una unión libre. */
 export type Endpoint =
@@ -193,7 +248,10 @@ export interface Circuit {
 // ─── Resultados ──────────────────────────────────────────────────────────────
 
 export interface ComponentState {
-  /** 2 terminales: V(0) − V(1). Transistor: V_CE o V_DS. Op-amp: V_salida respecto a GND. */
+  /**
+   * 2 terminales: V(0) − V(1). Transistor: V_CE o V_DS. Op-amp, compuertas y
+   * demás componentes digitales: voltaje de su (primera) salida respecto a GND.
+   */
   voltage: number
   /** 2 terminales: del terminal 0 al 1. Transistor: I_C o I_D. Op-amp: corriente que entrega la salida. */
   current: number
@@ -265,6 +323,12 @@ export const TERMINAL_COUNT: Record<ComponentKind, number> = {
   bjt: 3,
   mosfet: 3,
   opamp: 3,
+  gate: 3,
+  not: 2,
+  'logic-input': 1,
+  clock: 1,
+  probe: 1,
+  dff: 4,
 }
 
 // ─── Simulación en el tiempo ─────────────────────────────────────────────────
@@ -283,6 +347,6 @@ export type DiodeGuess = Record<string, number>
  * transient: un paso de tiempo `dt` partiendo de `state`.
  */
 export type SolveMode =
-  | { kind: 'dc'; guess?: DiodeGuess; time?: number }
+  | { kind: 'dc'; guess?: DiodeGuess; time?: number; logic?: ReactiveState }
   /** `time`: instante al final del paso (para las fuentes que dependen del tiempo). */
-  | { kind: 'transient'; dt: number; state: ReactiveState; guess?: DiodeGuess; time?: number }
+  | { kind: 'transient'; dt: number; state: ReactiveState; guess?: DiodeGuess; time?: number; logic?: ReactiveState }

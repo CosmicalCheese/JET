@@ -39,6 +39,7 @@ export const CATEGORIES: Category[] = [
   { id: 'mecanica', area: 'fisica', label: 'Cinemática y dinámica', description: 'Movimiento y fuerzas' },
   { id: 'energia', area: 'fisica', label: 'Trabajo y energía', description: 'Trabajo, energía cinética y potencial' },
   { id: 'electricidad', area: 'fisica', label: 'Electricidad', description: 'Cargas, corriente, potencia y circuitos' },
+  { id: 'digital', area: 'fisica', label: 'Electrónica digital', description: 'Compuertas lógicas, binario y flip-flops' },
   { id: 'termodinamica', area: 'fisica', label: 'Termodinámica', description: 'Calor, gases y máquinas térmicas' },
   { id: 'ondas', area: 'fisica', label: 'Ondas y óptica', description: 'Refracción y longitud de onda' },
   { id: 'fluidos', area: 'fisica', label: 'Mecánica de fluidos', description: 'Presión y flujo' },

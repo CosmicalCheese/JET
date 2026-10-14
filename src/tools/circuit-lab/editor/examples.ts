@@ -319,6 +319,77 @@ function invertingAmp(): CircuitDoc {
   }
 }
 
+/** Dos entradas A y B repartidas a una AND, una OR y una XOR, cada una con su sonda. */
+function gates(): CircuitDoc {
+  const w = counter()
+  const ops = ['and', 'or', 'xor'] as const
+  return {
+    version: 1,
+    components: [
+      createComponent('logic-input', 'A', { x: 0, y: -3 }),
+      createComponent('logic-input', 'B', { x: 0, y: 3 }),
+      ...ops.map((op, i) => set(createComponent('gate', `G${i + 1}`, { x: 10, y: -6 + 6 * i }), 'gate', { op })),
+      ...ops.map((_, i) => createComponent('probe', `P${i + 1}`, { x: 16, y: -6 + 6 * i })),
+      createComponent('ground', 'GND1', { x: 0, y: 9 }),
+    ],
+    wires: [
+      // Bus de A en x = 5 y de B en x = 6 (se cruzan sin conectarse).
+      ...polyline(w, [2, -3], [5, -3]),
+      ...polyline(w, [5, -7], [5, 5]),
+      ...polyline(w, [2, 3], [6, 3]),
+      ...polyline(w, [6, -5], [6, 7]),
+      ...[-7, -1, 5].flatMap((y) => polyline(w, [5, y], [8, y])),
+      ...[-5, 1, 7].flatMap((y) => polyline(w, [6, y], [8, y])),
+      ...[-6, 0, 6].flatMap((y) => polyline(w, [12, y], [14, y])),
+    ],
+  }
+}
+
+/** Contador binario de 2 bits: cada flip-flop con Q̄ → D se divide entre 2. */
+function binaryCounter(): CircuitDoc {
+  const w = counter()
+  return {
+    version: 1,
+    components: [
+      createComponent('clock', 'CLK', { x: 0, y: 0 }),
+      createComponent('dff', 'FF1', { x: 8, y: 0 }),
+      createComponent('dff', 'FF2', { x: 18, y: 0 }),
+      createComponent('probe', 'P1', { x: 12, y: -7 }),
+      createComponent('probe', 'P2', { x: 22, y: -7 }),
+      createComponent('ground', 'GND1', { x: 0, y: 4 }),
+    ],
+    wires: [
+      ...polyline(w, [2, 0], [4, 0], [4, 1], [6, 1]),
+      ...polyline(w, [10, 1], [12, 1], [12, -4], [5, -4], [5, -1], [6, -1]),
+      ...polyline(w, [12, 1], [16, 1]),
+      ...polyline(w, [20, 1], [22, 1], [22, -4], [15, -4], [15, -1], [16, -1]),
+      ...polyline(w, [10, -1], [10, -7]),
+      ...polyline(w, [20, -1], [20, -7]),
+    ],
+  }
+}
+
+/** Mixto: una entrada lógica, un inversor y un LED de verdad (analógico). */
+function logicLed(): CircuitDoc {
+  const w = counter()
+  return {
+    version: 1,
+    components: [
+      createComponent('logic-input', 'A', { x: 0, y: 0 }),
+      createComponent('not', 'N1', { x: 6, y: 0 }),
+      set(createComponent('resistor', 'R1', { x: 12, y: 0 }), 'resistor', { resistance: 330 }),
+      createComponent('led', 'LED1', { x: 16, y: 2 }, 1),
+      createComponent('ground', 'GND1', { x: 16, y: 6 }),
+    ],
+    wires: [
+      ...polyline(w, [2, 0], [4, 0]),
+      ...polyline(w, [8, 0], [10, 0]),
+      ...polyline(w, [14, 0], [16, 0]),
+      ...polyline(w, [16, 4], [16, 6]),
+    ],
+  }
+}
+
 export interface Example {
   id: string
   name: string
@@ -362,6 +433,19 @@ export const EXAMPLES: Example[] = [
     id: 'inversor', name: 'Amplificador inversor (op-amp)',
     description: 'Ganancia −RF/RIN = −10: la salida es la entrada invertida y 10 veces mayor.',
     build: invertingAmp, traces: ['V1', 'U1'],
+  },
+  {
+    id: 'compuertas', name: 'Compuertas lógicas AND, OR y XOR',
+    description: 'Cambia A y B (doble clic) y mira cada sonda: es la tabla de verdad en vivo.', build: gates,
+  },
+  {
+    id: 'contador', name: 'Contador binario de 2 bits (flip-flops)',
+    description: 'P1 y P2 cuentan 0, 1, 2, 3 en binario con cada pulso del reloj.',
+    build: binaryCounter, traces: ['CLK', 'FF1', 'FF2'],
+  },
+  {
+    id: 'logica-led', name: 'Lógica que enciende un LED',
+    description: 'El inversor da 5 V cuando A = 0: su salida alimenta un LED de verdad.', build: logicLed,
   },
   {
     id: 'rc', name: 'Carga y descarga de un capacitor',

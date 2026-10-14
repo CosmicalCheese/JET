@@ -1,11 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { TERMINAL_COUNT, type ComponentKind, type DCResult } from '../engine/types.ts'
 import {
-  HALF, keyOf, rotate, route, terminalPoints,
+  bodyBox, keyOf, rotate, route, terminalPoints,
   type CircuitDoc, type Placed, type Pt, type Rotation, type Translation,
 } from './model.ts'
 import { ComponentSymbol, G } from './symbols.tsx'
-import { LED_NAME, METER_LETTER } from './labels.ts'
+import { GATE_NAME, LED_NAME, METER_LETTER } from './labels.ts'
 import { formatSI } from './units.ts'
 
 export type Tool = 'select' | 'wire' | ComponentKind
@@ -68,13 +68,13 @@ function toLocal(c: Placed, p: Pt): Pt {
   return rotate({ x: p.x - c.x, y: p.y - c.y }, ((4 - c.rot) % 4) as Rotation)
 }
 
-const isTriple = (c: { kind: Placed['kind'] }) => TERMINAL_COUNT[c.kind] === 3
+/** Más de dos terminales (transistores, op-amp, compuertas, flip-flop). */
+const isMulti = (c: { kind: Placed['kind'] }) => TERMINAL_COUNT[c.kind] > 2
 
 function hitComponent(c: Placed, p: Pt): boolean {
   const l = toLocal(c, p)
-  if (c.kind === 'ground') return Math.abs(l.x) <= 0.8 && l.y >= -0.3 && l.y <= 1.4
-  if (isTriple(c)) return Math.abs(l.x) <= 1.6 && Math.abs(l.y) <= 1.6
-  return Math.abs(l.x) <= HALF - 0.4 && Math.abs(l.y) <= 1
+  const [x0, y0, x1, y1] = bodyBox(c.kind)
+  return l.x >= x0 && l.x <= x1 && l.y >= y0 && l.y <= y1
 }
 
 function distToSegment(p: Pt, a: Pt, b: Pt): number {
@@ -114,7 +114,7 @@ export function CircuitCanvas(props: Props) {
         ...terminalPoints(c),
         { x: c.x, y: c.y + 1.5 },
         { x: c.x, y: c.y - 1.5 },
-        ...(c.rot % 2 === 1 || isTriple(c) ? [{ x: c.x + 5, y: c.y }] : []),
+        ...(c.rot % 2 === 1 || isMulti(c) ? [{ x: c.x + 5, y: c.y }] : []),
       ]),
       ...doc.wires.flatMap((w) => [{ x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 }]),
     ]
@@ -277,7 +277,7 @@ export function CircuitCanvas(props: Props) {
 
   const onDoubleClick = (e: React.MouseEvent) => {
     const c = componentAt(toGrid(e))
-    if (c?.kind === 'switch') props.onToggleSwitch(c.id)
+    if (c?.kind === 'switch' || c?.kind === 'logic-input') props.onToggleSwitch(c.id)
   }
 
   // ─── Render ────────────────────────────────────────────────────────────────
@@ -339,11 +339,10 @@ export function CircuitCanvas(props: Props) {
             <g key={c.id} transform={`translate(${c.x * G},${c.y * G}) rotate(${c.rot * 90})`}>
               {(sel || bad) && (
                 <rect
-                  {...(c.kind === 'ground'
-                    ? { x: -18, y: -8, width: 36, height: 40 }
-                    : isTriple(c)
-                      ? { x: -46, y: -46, width: 92, height: 92 }
-                      : { x: -HALF * G - 6, y: -22, width: HALF * G * 2 + 12, height: 44 })}
+                  {...(() => {
+                    const [x0, y0, x1, y1] = bodyBox(c.kind)
+                    return { x: x0 * G - 6, y: y0 * G - 6, width: (x1 - x0) * G + 12, height: (y1 - y0) * G + 12 }
+                  })()}
                   rx={8}
                   fill={sel ? '#dbeafe' : props.highlightTone === 'error' ? '#fee2e2' : '#fef3c7'}
                   stroke={sel ? '#60a5fa' : props.highlightTone === 'error' ? '#f87171' : '#fbbf24'}
@@ -351,7 +350,8 @@ export function CircuitCanvas(props: Props) {
                 />
               )}
               <ComponentSymbol c={c} leads={leads} gradientId={`cl-grad-${c.id}`}
-                glow={c.kind === 'led' && solution ? Math.min(1, Math.max(0, solution.components[c.id]?.current ?? 0) / 0.02) : 0} />
+                glow={c.kind === 'led' && solution ? Math.min(1, Math.max(0, solution.components[c.id]?.current ?? 0) / 0.02) : 0}
+                level={c.kind === 'probe' && solution?.components[c.id] ? (solution.components[c.id].voltage > 2.5 ? 1 : 0) : undefined} />
             </g>
           )
         })}
@@ -372,7 +372,7 @@ export function CircuitCanvas(props: Props) {
               if (c.kind === 'ground' || c.kind === 'voltmeter') return null
               const state = solution.components[c.id]
               if (!state) return null
-              if (isTriple(c)) {
+              if (TERMINAL_COUNT[c.kind] !== 2) {
                 // Un tramo por terminal, del terminal al centro (sentido de la corriente que entra).
                 return terminalPoints(c).map((p, t) => {
                   const speed = flowSpeed(state.terminalCurrents[t] ?? 0)
@@ -451,14 +451,20 @@ function Label({ c, result }: { c: Placed; result: DCResult }) {
     case 'ac-source': value = `${formatSI(c.amplitude, 'V')} ${formatSI(c.frequency, 'Hz')}`; break
     case 'bjt': value = `${c.polarity.toUpperCase()} β=${c.beta}`; break
     case 'mosfet': value = `canal ${c.polarity.toUpperCase()}`; break
+    case 'gate': value = GATE_NAME[c.op]; break
+    case 'not': value = 'NOT'; break
+    case 'clock': value = formatSI(c.frequency, 'Hz'); break
     case 'switch': value = c.closed ? 'cerrado' : 'abierto'; break
     case 'voltmeter': value = state ? formatSI(state.voltage, 'V') : '—'; strong = true; break
     case 'ammeter': value = state ? formatSI(state.current, 'A') : '—'; strong = true; break
   }
-  // A la derecha si es vertical o de 3 terminales; arriba si es horizontal.
-  const side = c.rot % 2 === 1 || isTriple(c)
-  const x = (c.x + (isTriple(c) ? 2.3 : side ? 1.15 : 0)) * G
-  const y = (c.y + (isTriple(c) ? -1.6 : side ? 0.3 : -1.35)) * G
+  // Arriba-derecha si tiene más de 2 terminales; a la derecha si es vertical; arriba si es horizontal.
+  const [, y0, x1] = bodyBox(c.kind)
+  const multi = isMulti(c)
+  const single = TERMINAL_COUNT[c.kind] === 1
+  const side = !single && (c.rot % 2 === 1 || multi)
+  const x = (c.x + (multi ? x1 + 0.7 : single ? 0 : side ? 1.15 : 0)) * G
+  const y = (c.y + (multi ? y0 : single ? y0 - 0.45 : side ? 0.3 : -1.35)) * G
   const vertical = side
   const letter = METER_LETTER[c.kind]
   return (

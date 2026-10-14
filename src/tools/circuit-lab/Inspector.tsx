@@ -7,10 +7,11 @@ import type { Circuit, ComponentState, DCResult, DCSolution } from './engine/typ
 import { firstOrder, nodeBalance, parallelGroup, seriesChain } from './engine/analysis.ts'
 import { isReactive } from './engine/transient.ts'
 import { keyOf, type CircuitDoc, type Placed, type Translation } from './editor/model.ts'
-import { KIND_LABEL, LED_NAME } from './editor/labels.ts'
+import { GATE_NAME, KIND_LABEL, LED_NAME, TERMINAL_NAMES } from './editor/labels.ts'
+import { applyOp, isDigital, V_THRESHOLD } from './engine/digital.ts'
 import { LED_VF } from './engine/diode.ts'
 import { TERMINAL_COUNT } from './engine/types.ts'
-import type { LedColor } from './engine/types.ts'
+import type { GateOp, LedColor } from './engine/types.ts'
 import { formatSI, parseSI } from './editor/units.ts'
 import type { Selection } from './editor/CircuitCanvas.tsx'
 
@@ -141,6 +142,28 @@ function ComponentPanel({ c, circuit, result, onChange, onDelete, traced, onTogg
             onChange={(k) => onChange({ ...c, k }, `${c.id}.k`)} />
         </>
       )}
+      {c.kind === 'gate' && (
+        <Choice label="Operación" value={c.op}
+          options={(Object.keys(GATE_NAME) as GateOp[]).map((op) => [op, GATE_NAME[op]])}
+          onChange={(op) => onChange({ ...c, op })} />
+      )}
+      {c.kind === 'logic-input' && (
+        <button
+          onClick={() => onChange({ ...c, high: !c.high })}
+          className={cn(
+            'w-full inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium border',
+            c.high ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-zinc-50 border-zinc-200 text-zinc-600',
+          )}
+        >
+          {c.high ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
+          {c.high ? '1 (5 V) — clic para poner 0' : '0 (0 V) — clic para poner 1'}
+        </button>
+      )}
+      {c.kind === 'clock' && (
+        <ValueEditor label="Frecuencia" unit="Hz" value={c.frequency} positive
+          slider={{ min: -2, max: 4, step: 0.01, toSlider: Math.log10, fromSlider: (s) => Number((10 ** s).toPrecision(3)) }}
+          onChange={(frequency) => onChange({ ...c, frequency }, `${c.id}.freq`)} />
+      )}
       {c.kind === 'opamp' && (
         <ValueEditor label="Saturación (alimentación ±)" unit="V" value={c.saturation} positive
           slider={{ min: 1, max: 20, step: 0.5 }}
@@ -179,7 +202,9 @@ function ComponentPanel({ c, circuit, result, onChange, onDelete, traced, onTogg
         </button>
       )}
 
-      {state && result.ok && (TERMINAL_COUNT[c.kind] === 3
+      {state && result.ok && (isDigital(c)
+        ? <DigitalReadouts c={c} solution={result} />
+        : TERMINAL_COUNT[c.kind] === 3
         ? <TripleReadouts c={c} state={state} solution={result} />
         : <Readouts c={c} state={state} />)}
       {state && result.ok && <Explanation c={c} state={state} circuit={circuit} solution={result} />}
@@ -259,6 +284,123 @@ function TripleReadouts({ c, state, solution }: { c: Placed; state: ComponentSta
       ))}
     </dl>
   )
+}
+
+// ─── Digital ─────────────────────────────────────────────────────────────────
+
+const levelText = (v: number) => `${v > V_THRESHOLD ? 1 : 0}  (${formatSI(v, 'V')})`
+
+function DigitalReadouts({ c, solution }: { c: Placed; solution: DCSolution }) {
+  const names = TERMINAL_NAMES[c.kind] ?? []
+  const v = terminalV(c, solution)
+  return (
+    <dl className="rounded-xl border border-zinc-200 bg-white divide-y divide-zinc-100">
+      {names.map((name, t) => (
+        <div key={name} className="flex items-baseline justify-between px-3 py-2">
+          <dt className="text-xs text-zinc-500">{name}</dt>
+          <dd className="text-sm font-semibold text-zinc-900 tabular-nums">{levelText(v[t])}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
+const GATE_EXPR: Record<GateOp, string> = {
+  and: 'Y = A\\cdot B',
+  or: 'Y = A + B',
+  xor: 'Y = A \\oplus B',
+  nand: 'Y = \\overline{A\\cdot B}',
+  nor: 'Y = \\overline{A + B}',
+  xnor: 'Y = \\overline{A \\oplus B}',
+}
+
+const GATE_MEANING: Record<GateOp, string> = {
+  and: 'La salida es 1 solo si las dos entradas son 1.',
+  or: 'La salida es 1 si al menos una entrada es 1.',
+  xor: 'La salida es 1 si las entradas son distintas.',
+  nand: 'Lo contrario de AND: 0 solo si las dos entradas son 1. Con NANDs se puede construir cualquier circuito lógico.',
+  nor: 'Lo contrario de OR: 1 solo si las dos entradas son 0.',
+  xnor: 'La salida es 1 si las entradas son iguales.',
+}
+
+/** Tabla de verdad con la fila actual resaltada. */
+function TruthTable({ inputs, rows, current }: { inputs: string[]; rows: number[][]; current: number[] }) {
+  return (
+    <table className="w-full text-center text-xs tabular-nums border border-violet-200 rounded-lg overflow-hidden">
+      <thead className="bg-violet-100/70 text-violet-800">
+        <tr>{[...inputs, 'Y'].map((h) => <th key={h} className="py-1 font-semibold">{h}</th>)}</tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => {
+          const now = r.slice(0, -1).every((x, i) => x === current[i])
+          return (
+            <tr key={r.join('')} className={now ? 'bg-amber-100 font-bold text-zinc-900' : 'text-zinc-600'}>
+              {r.map((x, i) => <td key={i} className="py-0.5">{x}</td>)}
+            </tr>
+          )
+        })}
+      </tbody>
+    </table>
+  )
+}
+
+function DigitalExplanation({ c, solution }: { c: Placed; solution: DCSolution }) {
+  const lv = terminalV(c, solution).map((v) => (v > V_THRESHOLD ? 1 : 0))
+  switch (c.kind) {
+    case 'gate':
+      return (
+        <>
+          <Tex display latex={GATE_EXPR[c.op]} />
+          <p>{GATE_MEANING[c.op]}</p>
+          <TruthTable inputs={['A', 'B']} current={lv}
+            rows={[[0, 0], [0, 1], [1, 0], [1, 1]].map(([a, b]) => [a, b, applyOp(c.op, a, b)])} />
+          <FormulaLink id="compuertas-logicas" label="Compuertas lógicas" />
+        </>
+      )
+    case 'not':
+      return (
+        <>
+          <Tex display latex="Y = \\overline{A}" />
+          <p>Invierte: un 1 se vuelve 0 y un 0 se vuelve 1.</p>
+          <TruthTable inputs={['A']} current={lv} rows={[[0, 1], [1, 0]]} />
+          <FormulaLink id="compuertas-logicas" label="Compuertas lógicas" />
+        </>
+      )
+    case 'logic-input':
+      return <p>Fija un nivel lógico: 1 = 5 V, 0 = 0 V. Doble clic (o Espacio) para cambiarlo.</p>
+    case 'clock':
+      return (
+        <>
+          <p>Alterna entre 0 y 1 a ritmo constante: marca el paso de los circuitos secuenciales (flip-flops, contadores).</p>
+          <Tex display latex={`T = \\frac{1}{f} = ${siTex(1 / c.frequency, 's')}`} />
+        </>
+      )
+    case 'probe':
+      return (
+        <p>
+          Muestra el nivel lógico: 1 si el voltaje supera {V_THRESHOLD} V (la mitad de la alimentación), 0 si no.
+          Ahora mide {formatSI(terminalV(c, solution)[0], 'V')}.
+        </p>
+      )
+    case 'dff':
+      return (
+        <>
+          <p>
+            <strong>Memoria de 1 bit.</strong> Solo cambia en el <strong>flanco de subida</strong> del reloj (cuando
+            CLK pasa de 0 a 1): en ese instante Q copia lo que haya en D. El resto del tiempo conserva su valor
+            aunque D cambie.
+          </p>
+          <Tex display latex="Q_{n+1} = D \\quad\\text{en cada } \\uparrow\\text{CLK}" />
+          <p className="text-xs text-zinc-500">
+            Conectando Q̄ a D cambia en cada flanco: divide la frecuencia entre 2. Encadenando varios se obtiene un
+            contador binario.
+          </p>
+          <FormulaLink id="contador-binario" label="Flip-flops y contadores" />
+        </>
+      )
+    default:
+      return null
+  }
 }
 
 function Choice<T extends string>({ label, value, options, onChange }: {
@@ -615,6 +757,13 @@ function Explanation({ c, state, circuit, solution }: {
           <FormulaLink id="corriente-alterna" label="Corriente alterna" />
         </>,
       )
+    case 'gate':
+    case 'not':
+    case 'logic-input':
+    case 'clock':
+    case 'probe':
+    case 'dff':
+      return box(<DigitalExplanation c={c} solution={solution} />)
     case 'bjt':
       return box(<BjtExplanation c={c} state={state} solution={solution} />)
     case 'mosfet':

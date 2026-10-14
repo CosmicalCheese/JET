@@ -14,6 +14,9 @@
  *   Capacitor: i = C·(v − v₀)/dt  →  G = C/dt,  fuente G·v₀
  *   Bobina:    v = L·(i − i₀)/dt  →  G = dt/L,  fuente i₀
  *
+ * Los componentes digitales (ver digital.ts) son entradas de alta impedancia y
+ * salidas de 0/5 V con resistencia de salida, todas referidas a GND.
+ *
  * Diodos, transistores y op-amps no son lineales: se resuelven con
  * Newton-Raphson, linealizando cada uno alrededor de un punto de prueba y
  * repitiendo hasta que converge (ver devices.ts).
@@ -26,6 +29,7 @@
 import { cloneMatrix, DenseMatrix, solveLinear } from './linear.ts'
 import { LED_VF } from './diode.ts'
 import { acValue, deviceModel, opampOutput, type DeviceModel } from './devices.ts'
+import { digitalPins, G_IN, isDigital, outputLevels, R_OUT, VDD } from './digital.ts'
 import { buildNetlist, terminalKey, endpointKey, GROUND_KEY, UnionFind, type Netlist } from './netlist.ts'
 import {
   TERMINAL_COUNT,
@@ -39,6 +43,11 @@ import {
 } from './types.ts'
 
 const MAX_NEWTON = 100
+
+/** Componentes cuya alimentación está implícita en GND: su corriente regresa por tierra. */
+export function isGroundReferenced(c: CircuitComponent): boolean {
+  return c.kind === 'opamp' || isDigital(c)
+}
 
 /** Rama tipo fuente de voltaje: fija V(a) − V(b) y aporta su corriente como incógnita. */
 interface Branch {
@@ -243,13 +252,15 @@ export function solveCircuit(circuit: Circuit, mode: SolveMode): DCResult {
   const time = mode.time ?? 0
 
   const opamps = circuit.components.filter((c) => c.kind === 'opamp')
-  if (opamps.length && nets.groundNet === null) {
+  const digital = circuit.components.filter(isDigital)
+  if ((opamps.length || digital.length) && nets.groundNet === null) {
     return fail([{
       code: 'needs-ground',
-      message: 'El op-amp necesita GND: su salida se mide respecto a tierra (ahí se conecta su alimentación).',
-      ids: opamps.map((c) => c.id),
+      message: 'Los op-amps y los componentes digitales necesitan GND: sus voltajes se miden respecto a tierra (ahí se conecta su alimentación).',
+      ids: [...opamps, ...digital].map((c) => c.id),
     }])
   }
+  const groundNet = nets.groundNet!
 
   // Una bobina puenteada por un cable en DC no lleva corriente definida ni hace daño: se ignora.
   const branches: Branch[] = [
@@ -271,6 +282,9 @@ export function solveCircuit(circuit: Circuit, mode: SolveMode): DCResult {
     for (const [s, t] of conductivePairs(c, mode)) islands.union(netOf(c.id, s), netOf(c.id, t))
   }
   for (const br of branches) islands.union(br.a, br.b)
+  for (const c of digital) {
+    for (let t = 0; t < TERMINAL_COUNT[c.kind]; t++) islands.union(netOf(c.id, t), groundNet)
+  }
 
   const issues: CircuitIssue[] = []
   for (const c of circuit.components) {
@@ -367,6 +381,20 @@ export function solveCircuit(circuit: Circuit, mode: SolveMode): DCResult {
       default:
         break // switch y voltímetro: abiertos; diodos: no lineales (abajo)
     }
+  }
+
+  // Digital: entradas = G_IN a GND; salidas = fuente de nivel·VDD con R_OUT (equivalente de Norton).
+  const logic = mode.logic ?? {}
+  const levels = new Map<string, number[]>()
+  for (const c of digital) {
+    const { inputs, outputs } = digitalPins(c)
+    const lv = outputLevels(c, logic, time)
+    levels.set(c.id, lv)
+    for (const t of inputs) stampConductance(netOf(c.id, t), groundNet, G_IN)
+    outputs.forEach((t, k) => {
+      stampConductance(netOf(c.id, t), groundNet, 1 / R_OUT)
+      stampSource(netOf(c.id, t), groundNet, (lv[k] * VDD) / R_OUT)
+    })
   }
 
   // ─── Parte no lineal: Newton-Raphson ───────────────────────────────────────
@@ -488,6 +516,21 @@ export function solveCircuit(circuit: Circuit, mode: SolveMode): DCResult {
       components[c.id] = { voltage, current: I[0], power: vt.reduce((s, v, t) => s + v * I[t], 0), terminalCurrents: I }
       continue
     }
+    if (isDigital(c)) {
+      const { inputs, outputs } = digitalPins(c)
+      const lv = levels.get(c.id)!
+      const tc = new Array(tn.length).fill(0)
+      for (const t of inputs) tc[t] = vt[t] * G_IN
+      outputs.forEach((t, k) => (tc[t] = (vt[t] - lv[k] * VDD) / R_OUT))
+      const main = outputs[0] ?? inputs[0]
+      components[c.id] = {
+        voltage: vt[main],
+        current: outputs.length ? -tc[main] : tc[main],
+        power: vt.reduce((s, v, t) => s + v * tc[t], 0),
+        terminalCurrents: tc,
+      }
+      continue
+    }
     if (c.kind === 'opamp') {
       const iOut = x[branchOf.get(c.id)!] // entra a la salida desde el circuito
       guess[`${c.id}#0`] = vt[0] - vt[1]
@@ -582,8 +625,8 @@ function solveIdealEdgeCurrents(
     if (c.kind === 'ground' || c.kind === 'switch') continue
     const tc = components[c.id].terminalCurrents
     tc.forEach((i, t) => (injection[vertexOf(c.id, t)] -= i))
-    // La corriente de salida de un op-amp vuelve por su alimentación, que está en GND.
-    if (c.kind === 'opamp' && groundVertex !== undefined) injection[groundVertex] += tc[2]
+    // La corriente de un op-amp o una compuerta vuelve por su alimentación, que está en GND.
+    if (isGroundReferenced(c) && groundVertex !== undefined) injection[groundVertex] += tc.reduce((a, b) => a + b, 0)
   }
 
   const adjacency: number[][] = Array.from({ length: nets.vertexCount }, () => [])

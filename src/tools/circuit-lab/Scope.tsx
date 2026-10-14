@@ -31,13 +31,15 @@ export function Scope({ traces, samples, onRemove }: {
       {traces.map((id) => {
         const pts = samples.filter((s) => s.values[id])
         const last = pts[pts.length - 1]?.values[id]
+        // Una corriente de fuga (entradas lógicas, voltímetros) no aporta nada: solo se grafica el voltaje.
+        const showI = pts.some((s) => Math.abs(s.values[id].i) >= 1e-6)
         return (
           <div key={id} className="px-4 py-2">
             <div className="flex items-center justify-between text-xs">
               <span className="font-semibold text-zinc-800">{id}</span>
               <span className="flex items-center gap-3 tabular-nums">
                 {last && <span style={{ color: V_COLOR }}>V = {formatSI(last.v, 'V')}</span>}
-                {last && <span style={{ color: I_COLOR }}>I = {formatSI(last.i, 'A')}</span>}
+                {last && showI && <span style={{ color: I_COLOR }}>I = {formatSI(last.i, 'A')}</span>}
                 <button onClick={() => onRemove(id)} title="Quitar gráfica"
                   className="p-1 rounded text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100">
                   <X size={13} />
@@ -47,7 +49,7 @@ export function Scope({ traces, samples, onRemove }: {
             <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="block w-full h-20 mt-1">
               <line x1={0} x2={W} y1={H / 2} y2={H / 2} stroke="#e4e4e7" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
               <Line pts={pts.map((s) => [(s.t - t0) / span, s.values[id].v])} color={V_COLOR} />
-              <Line pts={pts.map((s) => [(s.t - t0) / span, s.values[id].i])} color={I_COLOR} />
+              {showI && <Line pts={pts.map((s) => [(s.t - t0) / span, s.values[id].i])} color={I_COLOR} />}
             </svg>
           </div>
         )

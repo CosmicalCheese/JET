@@ -7,6 +7,7 @@
  */
 
 import { solveCircuit } from './dc.ts'
+import { isDigital, nextLogic } from './digital.ts'
 import type { Circuit, CircuitComponent, DCResult, ReactiveState } from './types.ts'
 
 export function isReactive(c: CircuitComponent): boolean {
@@ -15,7 +16,7 @@ export function isReactive(c: CircuitComponent): boolean {
 
 /** Cambia con el tiempo: hay que simular paso a paso. */
 export function isDynamic(c: CircuitComponent): boolean {
-  return isReactive(c) || c.kind === 'ac-source'
+  return isReactive(c) || c.kind === 'ac-source' || isDigital(c)
 }
 
 export interface StepResult {
@@ -31,9 +32,10 @@ export interface StepResult {
 export function transientStep(circuit: Circuit, state: ReactiveState, dt: number, time = 0): StepResult {
   // El estado también guarda los voltajes de control de diodos y transistores
   // (claves "id#k"): son el mejor punto de partida para Newton-Raphson.
-  const result = solveCircuit(circuit, { kind: 'transient', dt, state, guess: state, time })
+  // También guarda el estado lógico (salidas de compuertas, Q de los flip-flops).
+  const result = solveCircuit(circuit, { kind: 'transient', dt, state, guess: state, time, logic: state })
   if (!result.ok) return { result, state }
-  const next: ReactiveState = { ...result.guess }
+  const next: ReactiveState = { ...result.guess, ...nextLogic(circuit.components, result, state) }
   for (const c of circuit.components) {
     if (c.kind === 'inductor') next[c.id] = result.components[c.id].current
     else if (c.kind === 'capacitor') next[c.id] = result.components[c.id].voltage
