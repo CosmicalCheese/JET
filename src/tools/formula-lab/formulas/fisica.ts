@@ -703,7 +703,8 @@ const ohm: Formula = {
     'Usar miliamperes sin convertir: $20\\ \\mathrm{mA} = 0.02\\ \\mathrm{A}$.',
     'Aplicarla directamente a componentes no óhmicos (LEDs, diodos, focos incandescentes), cuya resistencia cambia con el voltaje o la temperatura.',
   ],
-  related: ['potencia-electrica'],
+  related: ['potencia-electrica', 'divisor-de-voltaje', 'resistencias-en-serie', 'resistencias-en-paralelo'],
+  toolLink: { path: '/circuit-lab?ejemplo=ohm', label: 'Circuit Lab' },
   keywords: ['voltaje', 'corriente', 'resistencia', 'circuito', 'ohm'],
 }
 
@@ -767,7 +768,8 @@ const potenciaElectrica: Formula = {
     'Confundir potencia (W) con energía (J o kWh): la energía es potencia por tiempo.',
     'Usar $I^2R$ con la $R$ de otro componente del circuito.',
   ],
-  related: ['ley-de-ohm'],
+  related: ['ley-de-ohm', 'leyes-de-kirchhoff'],
+  toolLink: { path: '/circuit-lab?ejemplo=ohm', label: 'Circuit Lab' },
   keywords: ['watts', 'consumo', 'kwh', 'energia electrica', 'potencia'],
 }
 

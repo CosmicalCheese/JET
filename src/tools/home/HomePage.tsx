@@ -26,6 +26,7 @@ import {
 
   ArrowRight,
   BookOpen,
+  CircuitBoard,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 
@@ -41,11 +42,12 @@ interface ToolCard {
 const sections: { title: string; description: string; tools: ToolCard[] }[] = [
   {
     title: 'Math',
-    description: 'Probability, matrices, statistics and formula explanations',
+    description: 'Probability, matrices, statistics, formula explanations and circuits',
     tools: [
       { path: '/probability/binomial', label: 'Probability', description: 'Binomial, Poisson, Hypergeometric & custom distributions', icon: Dice5, color: 'slate' },
       { path: '/matrices/multiplication', label: 'Matrices', description: 'Multiply, reduce, invert, and solve matrix systems', icon: Table2, color: 'zinc' },
       { path: '/formula-lab', label: 'Formula Lab', description: 'What each formula means, where it comes from, and how to read the result', icon: BookOpen, color: 'violet' },
+      { path: '/circuit-lab', label: 'Circuit Lab', description: 'Build circuits and watch them run: live voltages, animated current and the formula behind each value', icon: CircuitBoard, color: 'amber' },
     ],
   },
   {

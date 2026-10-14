@@ -32,6 +32,7 @@ import { LinearRegressionPage } from './tools/regression/LinearRegressionPage'
 import { SamplingPage } from './tools/sampling/SamplingPage'
 import { ImageCropPage } from './tools/image-crop/ImageCropPage'
 import { FormulaLabPage } from './tools/formula-lab/FormulaLabPage'
+import { CircuitLabPage } from './tools/circuit-lab/CircuitLabPage'
 
 function ErrorPage() {
   const error = useRouteError()
@@ -93,6 +94,7 @@ export const router = createBrowserRouter([
       { path: 'sampling', element: <SamplingPage /> },
       { path: 'formula-lab', element: <FormulaLabPage /> },
       { path: 'formula-lab/:formulaId', element: <FormulaLabPage /> },
+      { path: 'circuit-lab', element: <CircuitLabPage /> },
       { path: 'pipeline', element: <PipelinePage /> },
       { path: 'video-to-gif', element: <VideoToGifPage /> },
       { path: 'audio-waveform', element: <AudioWaveformPage /> },

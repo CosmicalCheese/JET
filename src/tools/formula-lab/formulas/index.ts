@@ -3,6 +3,7 @@ import { ESTADISTICA } from './estadistica'
 import { PROBABILIDAD } from './probabilidad'
 import { VECTORES } from './vectores'
 import { FISICA } from './fisica'
+import { CIRCUITOS } from './circuitos'
 import { QUIMICA } from './quimica'
 import { ALGEBRA } from './algebra'
 import { TRIGONOMETRIA } from './trigonometria'
@@ -37,7 +38,7 @@ export const CATEGORIES: Category[] = [
   { id: 'estadistica', area: 'estadistica', label: 'Estadística', description: 'Descriptiva, inferencia y regresión' },
   { id: 'mecanica', area: 'fisica', label: 'Cinemática y dinámica', description: 'Movimiento y fuerzas' },
   { id: 'energia', area: 'fisica', label: 'Trabajo y energía', description: 'Trabajo, energía cinética y potencial' },
-  { id: 'electricidad', area: 'fisica', label: 'Electricidad', description: 'Cargas, corriente y potencia' },
+  { id: 'electricidad', area: 'fisica', label: 'Electricidad', description: 'Cargas, corriente, potencia y circuitos' },
   { id: 'termodinamica', area: 'fisica', label: 'Termodinámica', description: 'Calor, gases y máquinas térmicas' },
   { id: 'ondas', area: 'fisica', label: 'Ondas y óptica', description: 'Refracción y longitud de onda' },
   { id: 'fluidos', area: 'fisica', label: 'Mecánica de fluidos', description: 'Presión y flujo' },
@@ -56,7 +57,7 @@ export const CATEGORIES: Category[] = [
 
 export const FORMULAS: Formula[] = [
   ...ALGEBRA, ...TRIGONOMETRIA, ...VECTORES, ...DERIVADAS, ...INTEGRALES,
-  ...PROBABILIDAD, ...ESTADISTICA, ...FISICA, ...QUIMICA,
+  ...PROBABILIDAD, ...ESTADISTICA, ...FISICA, ...CIRCUITOS, ...QUIMICA,
   ...PROGRAMACION_LINEAL, ...INVENTARIOS, ...COLAS, ...PROYECTOS, ...DECISIONES, ...MARKOV, ...TRANSPORTE,
 ]
 

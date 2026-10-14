@@ -43,6 +43,7 @@ import {
   Crop,
   BarChart2,
   BookOpen,
+  CircuitBoard,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { HistoryPanel } from '../ui/HistoryPanel'
@@ -74,6 +75,11 @@ const defaultSections: Section[] = [
         path: '/formula-lab',
         label: 'Formula Lab',
         icon: BookOpen,
+      },
+      {
+        path: '/circuit-lab',
+        label: 'Circuit Lab',
+        icon: CircuitBoard,
       },
       {
         path: '/probability',
